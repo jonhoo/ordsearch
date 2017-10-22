@@ -1,0 +1,7 @@
+[package]
+name = "ordsearch"
+version = "0.1.0"
+authors = ["Jon Gjengset <jon@thesquareplanet.com>"]
+
+[dependencies]
+prefetch = "0.1"
