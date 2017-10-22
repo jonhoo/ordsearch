@@ -82,6 +82,22 @@ extern crate prefetch;
 use std::borrow::Borrow;
 
 /// A collection of ordered items that can efficiently satisfy queries for nearby elements.
+///
+/// The most interesting method here is `find_gte`.
+///
+/// # Examples
+///
+/// ```
+/// # use ordsearch::OrderedCollection;
+/// let x = OrderedCollection::from(vec![1, 2, 4, 8, 16, 32, 64]);
+/// assert_eq!(x.find_gte(0), Some(&1));
+/// assert_eq!(x.find_gte(1), Some(&1));
+/// assert_eq!(x.find_gte(3), Some(&4));
+/// assert_eq!(x.find_gte(6), Some(&8));
+/// assert_eq!(x.find_gte(8), Some(&8));
+/// assert_eq!(x.find_gte(64), Some(&64));
+/// assert_eq!(x.find_gte(65), None);
+/// ```
 pub struct OrderedCollection<T> {
     items: Vec<T>,
     mask: usize,
@@ -221,6 +237,20 @@ impl<T: Ord> OrderedCollection<T> {
     /// Find the smallest value `v` such that `v >= x`.
     ///
     /// Returns `None` if there is no such `v`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use ordsearch::OrderedCollection;
+    /// let x = OrderedCollection::from(vec![1, 2, 4, 8, 16, 32, 64]);
+    /// assert_eq!(x.find_gte(0), Some(&1));
+    /// assert_eq!(x.find_gte(1), Some(&1));
+    /// assert_eq!(x.find_gte(3), Some(&4));
+    /// assert_eq!(x.find_gte(6), Some(&8));
+    /// assert_eq!(x.find_gte(8), Some(&8));
+    /// assert_eq!(x.find_gte(64), Some(&64));
+    /// assert_eq!(x.find_gte(65), None);
+    /// ```
     pub fn find_gte<'a, X>(&'a self, x: X) -> Option<&'a T>
     where
         T: Borrow<X>,
