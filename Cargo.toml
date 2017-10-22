@@ -1,11 +1,27 @@
 [package]
 name = "ordsearch"
 version = "0.1.0"
+
+description = "A data structure for efficient lower-bound lookups"
+readme = "README.md"
+
 authors = ["Jon Gjengset <jon@thesquareplanet.com>"]
+
+documentation = "https://docs.rs/ordsearch"
+homepage = "https://github.com/jonhoo/ordsearch"
+repository = "https://github.com/jonhoo/ordsearch.git"
+
+keywords = ["data-structures", "search", "performance"]
+categories = ["data-structures", "memory-management"]
+
+license = "MIT/Apache-2.0"
 
 [features]
 default = []
 bench = []
+
+[badges]
+travis-ci = { repository = "jonhoo/ordsearch" }
 
 [dependencies]
 prefetch = "0.1"
