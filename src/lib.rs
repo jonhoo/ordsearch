@@ -382,7 +382,7 @@ mod tests {
     }
 }
 
-#[cfg(feature = "bench")]
+#[cfg(feature = "nightly")]
 mod benchmarks {
     use super::OrderedCollection;
     use test::Bencher;
