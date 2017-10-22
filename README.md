@@ -26,12 +26,15 @@ written by the authors of the aforementioned paper. This is the recommended algo
 paper, and what the authors suggested in
 https://github.com/patmorin/arraylayout/issues/3#issuecomment-338472755.
 
+Note that prefetching is *only* enabled with the (non-default) `nightly` feature due to
+https://github.com/aweinstock314/prefetch/issues/1. Suggestions for workarounds welcome.
+
 ## Performance
 
 The included benchmarks can be run with
 
 ```console,ignore
-$ cargo +nightly bench --features bench
+$ cargo +nightly bench --features nightly
 ```
 
 These will benchmark both construction and search with different number of values, and
