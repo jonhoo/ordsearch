@@ -20,12 +20,15 @@
 //! paper, and what the authors suggested in
 //! https://github.com/patmorin/arraylayout/issues/3#issuecomment-338472755.
 //!
+//! Note that prefetching is *only* enabled with the (non-default) `nightly` feature due to
+//! https://github.com/aweinstock314/prefetch/issues/1. Suggestions for workarounds welcome.
+//!
 //! # Performance
 //!
 //! The included benchmarks can be run with
 //!
 //! ```console,ignore
-//! $ cargo +nightly bench --features bench
+//! $ cargo +nightly bench --features nightly
 //! ```
 //!
 //! These will benchmark both construction and search with different number of values, and
@@ -70,14 +73,14 @@
 //!  - [ ] Implement deep prefetching for large `T`: https://github.com/patmorin/arraylayout/blob/3f20174a2a0ab52c6f37f2ea87d087307f19b5ee/src/eytzinger_array.h#L128
 //!
 #![deny(missing_docs)]
-#![cfg_attr(feature = "bench", feature(test))]
-#![cfg_attr(feature = "bench", feature(concat_idents))]
-#[cfg(feature = "bench")]
-extern crate rand;
-#[cfg(feature = "bench")]
-extern crate test;
-
+#![cfg_attr(feature = "nightly", feature(test))]
+#![cfg_attr(feature = "nightly", feature(concat_idents))]
+#[cfg(feature = "nightly")]
 extern crate prefetch;
+#[cfg(feature = "nightly")]
+extern crate rand;
+#[cfg(feature = "nightly")]
+extern crate test;
 
 use std::borrow::Borrow;
 
@@ -100,7 +103,8 @@ use std::borrow::Borrow;
 /// ```
 pub struct OrderedCollection<T> {
     items: Vec<T>,
-    mask: usize,
+
+    #[cfg(feature = "nightly")] mask: usize,
 }
 
 impl<T: Ord> From<Vec<T>> for OrderedCollection<T> {
@@ -206,16 +210,21 @@ impl<T: Ord> OrderedCollection<T> {
         // it's now safe to set the length, since all `n` elements have been inserted.
         unsafe { v.set_len(n) };
 
-        let mut mask = 1;
-        while mask <= n {
-            mask <<= 1;
-        }
-        mask -= 1;
+        #[cfg(feature = "nightly")]
+        {
+            let mut mask = 1;
+            while mask <= n {
+                mask <<= 1;
+            }
+            mask -= 1;
 
-        OrderedCollection {
-            items: v,
-            mask: mask,
+            OrderedCollection {
+                items: v,
+                mask: mask,
+            }
         }
+        #[cfg(not(feature = "nightly"))]
+        OrderedCollection { items: v }
     }
 
     /// Construct a new `OrderedCollection` from a slice of elements.
@@ -262,14 +271,19 @@ impl<T: Ord> OrderedCollection<T> {
         let mut i = 0;
         let multiplier = 64 / mem::size_of::<T>();
         let offset = multiplier + multiplier / 2;
+        let _ = offset; // avoid warning about unused w/o nightly
 
         while i < self.items.len() {
-            use prefetch::prefetch::*;
-            // unsafe is safe because pointer is never dereferenced
-            prefetch::<Read, High, Data, _>(unsafe {
-                self.items
-                    .get_unchecked((multiplier * i + offset) & self.mask)
-            } as *const _);
+            #[cfg(feature = "nightly")]
+            {
+                use prefetch::prefetch::*;
+                // unsafe is safe because pointer is never dereferenced
+                prefetch::<Read, High, Data, _>(unsafe {
+                    self.items
+                        .get_unchecked((multiplier * i + offset) & self.mask)
+                } as *const _);
+            }
+
             // safe because i < self.items.len()
             i = if x.borrow() <= unsafe { self.items.get_unchecked(i) }.borrow() {
                 2 * i + 1
