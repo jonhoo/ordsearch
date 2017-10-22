@@ -399,7 +399,7 @@ mod tests {
     }
 }
 
-#[cfg(feature = "nightly")]
+#[cfg(all(feature = "nightly", test))]
 mod b {
     use super::OrderedCollection;
     use test::Bencher;
