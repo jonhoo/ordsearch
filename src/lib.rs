@@ -31,41 +31,60 @@
 //! $ cargo +nightly bench --features nightly
 //! ```
 //!
-//! These will benchmark both construction and search with different number of values, and
-//! differently sized values. `search_common` is likely the metric you want to pay the most
-//! attention to: it is the cost of looking up among 1024 `usize` values.
+//! This will benchmark both construction and search with different number of values, and
+//! differently sized values -- look for the line that aligns closest with your data. The general
+//! trend is that `ordsearch` is faster when `n` is smaller and `T` is larger. You may also want to
+//! compare with the pending Rust PR "[Improve SliceExt::binary_search
+//! performance](https://github.com/rust-lang/rust/pull/45333)".
 //! [Summarized](https://github.com/BurntSushi/cargo-benchcmp) results from my laptop (an X1 Carbon
-//! with i7-5600U @ 2.60GHz) are given below. **Note that these numbers include random number
-//! generation**, so they provide only a lower bound.
+//! with i7-5600U @ 2.60GHz) are given below.
 //!
 //! Compared to binary search over a sorted vector:
 //!
 //! ```text,ignore
-//! name                   sorted_vec:: ns/iter  this:: ns/iter  diff ns/iter   diff %  speedup
-//! search_common          67                    35                       -32  -47.76%   x 1.91
-//! search_few_u32         42                    21                       -21  -50.00%   x 2.00
-//! search_few_u8          42                    21                       -21  -50.00%   x 2.00
-//! search_many_u32        115                   98                       -17  -14.78%   x 1.17
-//! search_many_u8         52                    70                        18   34.62%   x 0.74
-//! construction_few_u32   3,365                 3,924                    559   16.61%   x 0.86
-//! construction_few_u8    3,483                 4,125                    642   18.43%   x 0.84
-//! construction_many_u32  2,338,019             2,619,590            281,571   12.04%   x 0.89
-//! construction_many_u8   1,174,587             1,481,139            306,552   26.10%   x 0.79
+//! name                        b::sorted_vec:: ns/iter  b::this:: ns/iter  diff ns/iter   diff %  speedup
+//! u8::search_l1               46                       38                           -8  -17.39%   x 1.21
+//! u8::search_l1_dup           31                       37                            6   19.35%   x 0.84
+//! u8::search_l2               45                       58                           13   28.89%   x 0.78
+//! u8::search_l2_dup           30                       56                           26   86.67%   x 0.54
+//! u8::search_l3               32                       165                         133  415.62%   x 0.19
+//! u8::search_l3_dup           30                       120                          90  300.00%   x 0.25
+//! u32::search_l1              62                       38                          -24  -38.71%   x 1.63
+//! u32::search_l1_dup          40                       38                           -2   -5.00%   x 1.05
+//! u32::search_l2              81                       64                          -17  -20.99%   x 1.27
+//! u32::search_l2_dup          59                       64                            5    8.47%   x 0.92
+//! u32::search_l3              176                      354                         178  101.14%   x 0.50
+//! u32::search_l3_dup          152                      355                         203  133.55%   x 0.43
+//! usize::search_l1            63                       37                          -26  -41.27%   x 1.70
+//! usize::search_l1_dup        39                       37                           -2   -5.13%   x 1.05
+//! usize::search_l2            83                       68                          -15  -18.07%   x 1.22
+//! usize::search_l2_dup        58                       69                           11   18.97%   x 0.84
+//! usize::search_l3            235                      469                         234   99.57%   x 0.50
+//! usize::search_l3_dup        193                      474                         281  145.60%   x 0.41
 //! ```
 //!
 //! Compared to a `BTreeSet`:
 //!
 //! ```text,ignore
-//! name                   btreeset:: ns/iter  this:: ns/iter  diff ns/iter   diff %  speedup
-//! search_common          94                  35                       -59  -62.77%   x 2.69
-//! search_few_u32         70                  21                       -49  -70.00%   x 3.33
-//! search_few_u8          64                  21                       -43  -67.19%   x 3.05
-//! search_many_u32        182                 98                       -84  -46.15%   x 1.86
-//! search_many_u8         69                  70                         1    1.45%   x 0.99
-//! construction_few_u32   9,598               3,924                 -5,674  -59.12%   x 2.45
-//! construction_few_u8    8,410               4,125                 -4,285  -50.95%   x 2.04
-//! construction_many_u32  10,416,444          2,619,590         -7,796,854  -74.85%   x 3.98
-//! construction_many_u8   3,643,919           1,481,139         -2,162,780  -59.35%   x 2.46
+//! name                        b::btreeset:: ns/iter  b::this:: ns/iter  diff ns/iter   diff %  speedup
+//! u8::search_l1               67                     38                          -29  -43.28%   x 1.76
+//! u8::search_l1_dup           50                     37                          -13  -26.00%   x 1.35
+//! u8::search_l2               66                     58                           -8  -12.12%   x 1.14
+//! u8::search_l2_dup           49                     56                            7   14.29%   x 0.88
+//! u8::search_l3               55                     165                         110  200.00%   x 0.33
+//! u8::search_l3_dup           49                     120                          71  144.90%   x 0.41
+//! u32::search_l1              92                     38                          -54  -58.70%   x 2.42
+//! u32::search_l1_dup          62                     38                          -24  -38.71%   x 1.63
+//! u32::search_l2              122                    64                          -58  -47.54%   x 1.91
+//! u32::search_l2_dup          84                     64                          -20  -23.81%   x 1.31
+//! u32::search_l3              386                    354                         -32   -8.29%   x 1.09
+//! u32::search_l3_dup          226                    355                         129   57.08%   x 0.64
+//! usize::search_l1            93                     37                          -56  -60.22%   x 2.51
+//! usize::search_l1_dup        63                     37                          -26  -41.27%   x 1.70
+//! usize::search_l2            127                    68                          -59  -46.46%   x 1.87
+//! usize::search_l2_dup        85                     69                          -16  -18.82%   x 1.23
+//! usize::search_l3            456                    469                          13    2.85%   x 0.97
+//! usize::search_l3_dup        272                    474                         202   74.26%   x 0.57
 //! ```
 //!
 //! # Future work
@@ -78,8 +97,6 @@
 #![cfg_attr(feature = "nightly", feature(concat_idents))]
 #[cfg(feature = "nightly")]
 extern crate prefetch;
-#[cfg(feature = "nightly")]
-extern crate rand;
 #[cfg(feature = "nightly")]
 extern crate test;
 
@@ -383,87 +400,154 @@ mod tests {
 }
 
 #[cfg(feature = "nightly")]
-mod benchmarks {
+mod b {
     use super::OrderedCollection;
     use test::Bencher;
-    use rand::{thread_rng, Rng};
+    use test::black_box;
     use std::collections::BTreeSet;
 
+    // these benchmarks borrow from https://github.com/rust-lang/rust/pull/45333
+
+    enum Cache {
+        L1,
+        L2,
+        L3,
+    }
+
+    impl Cache {
+        pub fn size(&self) -> usize {
+            match *self {
+                Cache::L1 => 1000,      // 8kb
+                Cache::L2 => 10_000,    // 80kb
+                Cache::L3 => 1_000_000, // 8Mb
+            }
+        }
+    }
+
+    #[inline]
+    fn nodup_usize(i: usize) -> usize {
+        i * 2
+    }
+
+    #[inline]
+    fn nodup_u8(i: usize) -> u8 {
+        nodup_usize(i) as u8
+    }
+
+    #[inline]
+    fn nodup_u32(i: usize) -> u32 {
+        nodup_usize(i) as u32
+    }
+
+    #[inline]
+    fn dup_usize(i: usize) -> usize {
+        i / 16 * 16
+    }
+
+    #[inline]
+    fn dup_u8(i: usize) -> u8 {
+        dup_usize(i) as u8
+    }
+
+    #[inline]
+    fn dup_u32(i: usize) -> u32 {
+        dup_usize(i) as u32
+    }
+
     macro_rules! benches {
-        ($t:ident) => {
-            mod $t {
+        ($t:ident, $v:ident) => {
+            mod $v {
                 use super::*;
 
-                #[bench]
-                fn construction_few_u8(b: &mut Bencher) {
+                fn construction_nodup(c: Cache, b: &mut Bencher) {
                     let mk = concat_idents!(make_, $t);
-                    bench_construction!(128, 0u8, mk, b);
+                    let mapper = concat_idents!(nodup_, $v);
+                    bench_construction!(c, mk, mapper, b);
                 }
 
                 #[bench]
-                fn construction_many_u8(b: &mut Bencher) {
-                    let mk = concat_idents!(make_, $t);
-                    bench_construction!(65535, 0u8, mk, b);
+                fn construction_l1(b: &mut Bencher) {
+                    construction_nodup(Cache::L1, b);
                 }
 
                 #[bench]
-                fn construction_few_u32(b: &mut Bencher) {
-                    let mk = concat_idents!(make_, $t);
-                    bench_construction!(128, 0u32, mk, b);
+                fn construction_l2(b: &mut Bencher) {
+                    construction_nodup(Cache::L2, b);
                 }
 
-                #[bench]
-                fn construction_many_u32(b: &mut Bencher) {
-                    let mk = concat_idents!(make_, $t);
-                    bench_construction!(65535, 0u32, mk, b);
-                }
-
-                #[bench]
-                fn search_few_u8(b: &mut Bencher) {
+                fn search_nodup(c: Cache, b: &mut Bencher) {
                     let mk = concat_idents!(make_, $t);
                     let s = concat_idents!(search_, $t);
-                    bench_search!(128, 0u8, mk, s, b);
+                    let mapper = concat_idents!(nodup_, $v);
+                    bench_search!(c, mk, s, mapper, b);
                 }
 
                 #[bench]
-                fn search_many_u8(b: &mut Bencher) {
-                    let mk = concat_idents!(make_, $t);
-                    let s = concat_idents!(search_, $t);
-                    bench_search!(65535, 0u8, mk, s, b);
+                fn search_l1(b: &mut Bencher) {
+                    search_nodup(Cache::L1, b);
                 }
 
                 #[bench]
-                fn search_common(b: &mut Bencher) {
-                    let mk = concat_idents!(make_, $t);
-                    let s = concat_idents!(search_, $t);
-                    bench_search!(1024, 0usize, mk, s, b);
+                fn search_l2(b: &mut Bencher) {
+                    search_nodup(Cache::L2, b);
                 }
 
                 #[bench]
-                fn search_few_u32(b: &mut Bencher) {
+                fn search_l3(b: &mut Bencher) {
+                    search_nodup(Cache::L3, b);
+                }
+
+                fn construction_dup(c: Cache, b: &mut Bencher) {
                     let mk = concat_idents!(make_, $t);
-                    let s = concat_idents!(search_, $t);
-                    bench_search!(128, 0u32, mk, s, b);
+                    let mapper = concat_idents!(dup_, $v);
+                    bench_construction!(c, mk, mapper, b);
                 }
 
                 #[bench]
-                fn search_many_u32(b: &mut Bencher) {
+                fn construction_l1_dup(b: &mut Bencher) {
+                    construction_dup(Cache::L1, b);
+                }
+
+                #[bench]
+                fn construction_l2_dup(b: &mut Bencher) {
+                    construction_dup(Cache::L2, b);
+                }
+
+                fn search_dup(c: Cache, b: &mut Bencher) {
                     let mk = concat_idents!(make_, $t);
                     let s = concat_idents!(search_, $t);
-                    bench_search!(65535, 0u32, mk, s, b);
+                    let mapper = concat_idents!(dup_, $v);
+                    bench_search!(c, mk, s, mapper, b);
+                }
+
+                #[bench]
+                fn search_l1_dup(b: &mut Bencher) {
+                    search_dup(Cache::L1, b);
+                }
+
+                #[bench]
+                fn search_l2_dup(b: &mut Bencher) {
+                    search_dup(Cache::L2, b);
+                }
+
+                #[bench]
+                fn search_l3_dup(b: &mut Bencher) {
+                    search_dup(Cache::L3, b);
                 }
             }
         }
     }
 
     macro_rules! bench_construction {
-        ($n:expr, $zero:expr, $make:ident, $b:ident) => {
-            let mut v = vec![];
-            v.resize($n, $zero);
-            let mut rng = thread_rng();
+        ($cache:expr, $make:ident, $mapper:ident, $b:ident) => {
+            let size = $cache.size();
+            let mut v: Vec<_> = (0..size).map(&$mapper).collect();
+            let mut r = 0usize;
+
             $b.iter(|| {
                 for e in v.iter_mut() {
-                    *e = rng.gen();
+                    r = r.wrapping_mul(1664525).wrapping_add(1013904223);
+                    *e = $mapper(r % size);
                 }
                 let x = $make(&mut v);
                 drop(x);
@@ -472,20 +556,19 @@ mod benchmarks {
     }
 
     macro_rules! bench_search {
-        ($n:expr, $zero:expr, $make:ident, $search:ident, $b:ident) => {
-            let mut v = vec![];
-            v.resize($n, $zero);
-            let mut rng = thread_rng();
-            for e in v.iter_mut() {
-                *e = rng.gen();
-            }
+        ($cache:expr, $make:ident, $search:ident, $mapper:ident, $b:ident) => {
+            let size = $cache.size();
+            let mut v: Vec<_> = (0..size).map(&$mapper).collect();
+            let mut r = 0usize;
 
             let c = $make(&mut v);
-            $b.iter(|| {
-                #[allow(unused_assignments)]
-                let mut x = $zero;
-                x = rng.gen();
-                $search(&c, x);
+            $b.iter(move || {
+                // LCG constants from https://en.wikipedia.org/wiki/Numerical_Recipes.
+                r = r.wrapping_mul(1664525).wrapping_add(1013904223);
+                // Lookup the whole range to get 50% hits and 50% misses.
+                let x = $mapper(r % size);
+
+                black_box($search(&c, x).is_some());
             });
         }
     }
@@ -498,7 +581,12 @@ mod benchmarks {
         c.find_gte(x).map(|v| &**v)
     }
 
-    benches!(this);
+    mod this {
+        use super::*;
+        benches!(this, u8);
+        benches!(this, u32);
+        benches!(this, usize);
+    }
 
     fn make_btreeset<T: Ord>(v: &mut Vec<T>) -> BTreeSet<&T> {
         use std::iter::FromIterator;
@@ -512,7 +600,12 @@ mod benchmarks {
             .map(|v| &**v)
     }
 
-    benches!(btreeset);
+    mod btreeset {
+        use super::*;
+        benches!(btreeset, u8);
+        benches!(btreeset, u32);
+        benches!(btreeset, usize);
+    }
 
     fn make_sorted_vec<T: Ord>(v: &mut Vec<T>) -> &[T] {
         v.sort_unstable();
@@ -523,5 +616,10 @@ mod benchmarks {
         c.binary_search(&x).ok().map(|i| &c[i])
     }
 
-    benches!(sorted_vec);
+    mod sorted_vec {
+        use super::*;
+        benches!(sorted_vec, u8);
+        benches!(sorted_vec, u32);
+        benches!(sorted_vec, usize);
+    }
 }
