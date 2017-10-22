@@ -41,7 +41,8 @@ These will benchmark both construction and search with different number of value
 differently sized values. `search_common` is likely the metric you want to pay the most
 attention to: it is the cost of looking up among 1024 `usize` values.
 [Summarized](https://github.com/BurntSushi/cargo-benchcmp) results from my laptop (an X1 Carbon
-with i7-5600U @ 2.60GHz) are given below.
+with i7-5600U @ 2.60GHz) are given below. **Note that these numbers include random number
+generation**, so they provide only a lower bound.
 
 Compared to binary search over a sorted vector:
 
