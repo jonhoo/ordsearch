@@ -226,7 +226,8 @@ impl<T: Ord> OrderedCollection<T> {
     ///
     /// ```
     /// # use ordsearch::OrderedCollection;
-    /// let a = OrderedCollection::from(&mut [42, 89, 7, 12]);
+    /// let mut vals = [42, 89, 7, 12];
+    /// let a = OrderedCollection::from_slice(&mut vals);
     /// assert_eq!(a.find_gte(50), Some(&&89));
     /// ```
     pub fn from_slice<'a>(v: &'a mut [T]) -> OrderedCollection<&'a T> {
