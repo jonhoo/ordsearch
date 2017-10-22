@@ -296,10 +296,13 @@ impl<T: Ord> OrderedCollection<T> {
             {
                 use prefetch::prefetch::*;
                 // unsafe is safe because pointer is never dereferenced
-                prefetch::<Read, High, Data, _>(unsafe {
-                    self.items
-                        .get_unchecked((multiplier * i + offset) & self.mask)
-                } as *const _);
+                unsafe {
+                    prefetch::<Read, High, Data, _>(
+                        self.items
+                            .as_ptr()
+                            .offset(((multiplier * i + offset) & self.mask) as isize),
+                    )
+                };
             }
 
             // safe because i < self.items.len()
