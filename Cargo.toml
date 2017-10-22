@@ -3,5 +3,12 @@ name = "ordsearch"
 version = "0.1.0"
 authors = ["Jon Gjengset <jon@thesquareplanet.com>"]
 
+[features]
+default = []
+bench = []
+
 [dependencies]
 prefetch = "0.1"
+
+[dev-dependencies]
+rand = "0.3"
