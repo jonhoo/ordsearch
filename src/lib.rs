@@ -95,8 +95,7 @@
 #![deny(missing_docs)]
 #![cfg_attr(feature = "nightly", feature(test))]
 #![cfg_attr(feature = "nightly", feature(concat_idents))]
-#[cfg(feature = "nightly")]
-extern crate prefetch;
+#![cfg_attr(feature = "nightly", feature(core_intrinsics))]
 #[cfg(feature = "nightly")]
 extern crate test;
 
@@ -294,13 +293,14 @@ impl<T: Ord> OrderedCollection<T> {
         while i < self.items.len() {
             #[cfg(feature = "nightly")]
             {
-                use prefetch::prefetch::*;
+                use std::intrinsics::prefetch_read_data;
                 // unsafe is safe because pointer is never dereferenced
                 unsafe {
-                    prefetch::<Read, High, Data, _>(
+                    prefetch_read_data(
                         self.items
                             .as_ptr()
                             .offset(((multiplier * i + offset) & self.mask) as isize),
+                        3,
                     )
                 };
             }

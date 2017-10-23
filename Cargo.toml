@@ -1,6 +1,6 @@
 [package]
 name = "ordsearch"
-version = "0.2.0"
+version = "0.2.1"
 
 description = "A data structure for efficient lower-bound lookups"
 readme = "README.md"
@@ -18,10 +18,7 @@ license = "MIT/Apache-2.0"
 
 [features]
 default = []
-nightly = ["prefetch"]
+nightly = []
 
 [badges]
 travis-ci = { repository = "jonhoo/ordsearch" }
-
-[dependencies]
-prefetch = { version = "0.1", optional = true }
