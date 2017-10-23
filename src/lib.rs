@@ -457,28 +457,50 @@ mod b {
         dup_usize(i) as u32
     }
 
-    macro_rules! benches {
+    macro_rules! construction_benches {
         ($t:ident, $v:ident) => {
             mod $v {
                 use super::*;
-
-                fn construction_nodup(c: Cache, b: &mut Bencher) {
+                fn nodup(c: Cache, b: &mut Bencher) {
                     let mk = concat_idents!(make_, $t);
                     let mapper = concat_idents!(nodup_, $v);
                     bench_construction!(c, mk, mapper, b);
                 }
 
                 #[bench]
-                fn construction_l1(b: &mut Bencher) {
-                    construction_nodup(Cache::L1, b);
+                fn l1(b: &mut Bencher) {
+                    nodup(Cache::L1, b);
                 }
 
                 #[bench]
-                fn construction_l2(b: &mut Bencher) {
-                    construction_nodup(Cache::L2, b);
+                fn l2(b: &mut Bencher) {
+                    nodup(Cache::L2, b);
                 }
 
-                fn search_nodup(c: Cache, b: &mut Bencher) {
+                fn dup(c: Cache, b: &mut Bencher) {
+                    let mk = concat_idents!(make_, $t);
+                    let mapper = concat_idents!(dup_, $v);
+                    bench_construction!(c, mk, mapper, b);
+                }
+
+                #[bench]
+                fn l1_dup(b: &mut Bencher) {
+                    dup(Cache::L1, b);
+                }
+
+                #[bench]
+                fn l2_dup(b: &mut Bencher) {
+                    dup(Cache::L2, b);
+                }
+            }
+        }
+    }
+
+    macro_rules! search_benches {
+        ($t:ident, $v:ident) => {
+            mod $v {
+                use super::*;
+                fn nodup(c: Cache, b: &mut Bencher) {
                     let mk = concat_idents!(make_, $t);
                     let s = concat_idents!(search_, $t);
                     let mapper = concat_idents!(nodup_, $v);
@@ -486,37 +508,21 @@ mod b {
                 }
 
                 #[bench]
-                fn search_l1(b: &mut Bencher) {
-                    search_nodup(Cache::L1, b);
+                fn l1(b: &mut Bencher) {
+                    nodup(Cache::L1, b);
                 }
 
                 #[bench]
-                fn search_l2(b: &mut Bencher) {
-                    search_nodup(Cache::L2, b);
+                fn l2(b: &mut Bencher) {
+                    nodup(Cache::L2, b);
                 }
 
                 #[bench]
-                fn search_l3(b: &mut Bencher) {
-                    search_nodup(Cache::L3, b);
+                fn l3(b: &mut Bencher) {
+                    nodup(Cache::L3, b);
                 }
 
-                fn construction_dup(c: Cache, b: &mut Bencher) {
-                    let mk = concat_idents!(make_, $t);
-                    let mapper = concat_idents!(dup_, $v);
-                    bench_construction!(c, mk, mapper, b);
-                }
-
-                #[bench]
-                fn construction_l1_dup(b: &mut Bencher) {
-                    construction_dup(Cache::L1, b);
-                }
-
-                #[bench]
-                fn construction_l2_dup(b: &mut Bencher) {
-                    construction_dup(Cache::L2, b);
-                }
-
-                fn search_dup(c: Cache, b: &mut Bencher) {
+                fn dup(c: Cache, b: &mut Bencher) {
                     let mk = concat_idents!(make_, $t);
                     let s = concat_idents!(search_, $t);
                     let mapper = concat_idents!(dup_, $v);
@@ -524,18 +530,38 @@ mod b {
                 }
 
                 #[bench]
-                fn search_l1_dup(b: &mut Bencher) {
-                    search_dup(Cache::L1, b);
+                fn l1_dup(b: &mut Bencher) {
+                    dup(Cache::L1, b);
                 }
 
                 #[bench]
-                fn search_l2_dup(b: &mut Bencher) {
-                    search_dup(Cache::L2, b);
+                fn l2_dup(b: &mut Bencher) {
+                    dup(Cache::L2, b);
                 }
 
                 #[bench]
-                fn search_l3_dup(b: &mut Bencher) {
-                    search_dup(Cache::L3, b);
+                fn l3_dup(b: &mut Bencher) {
+                    dup(Cache::L3, b);
+                }
+            }
+        }
+    }
+
+    macro_rules! benches {
+        ($t:ident) => {
+            mod $t {
+                pub use super::*;
+                mod construction {
+                    pub use super::*;
+                    construction_benches!($t, u8);
+                    construction_benches!($t, u32);
+                    construction_benches!($t, usize);
+                }
+                mod search {
+                    pub use super::*;
+                    search_benches!($t, u8);
+                    search_benches!($t, u32);
+                    search_benches!($t, usize);
                 }
             }
         }
@@ -584,12 +610,7 @@ mod b {
         c.find_gte(x).map(|v| &**v)
     }
 
-    mod this {
-        use super::*;
-        benches!(this, u8);
-        benches!(this, u32);
-        benches!(this, usize);
-    }
+    benches!(this);
 
     fn make_btreeset<T: Ord>(v: &mut Vec<T>) -> BTreeSet<&T> {
         use std::iter::FromIterator;
@@ -603,12 +624,7 @@ mod b {
             .map(|v| &**v)
     }
 
-    mod btreeset {
-        use super::*;
-        benches!(btreeset, u8);
-        benches!(btreeset, u32);
-        benches!(btreeset, usize);
-    }
+    benches!(btreeset);
 
     fn make_sorted_vec<T: Ord>(v: &mut Vec<T>) -> &[T] {
         v.sort_unstable();
@@ -619,10 +635,5 @@ mod b {
         c.binary_search(&x).ok().map(|i| &c[i])
     }
 
-    mod sorted_vec {
-        use super::*;
-        benches!(sorted_vec, u8);
-        benches!(sorted_vec, u32);
-        benches!(sorted_vec, usize);
-    }
+    benches!(sorted_vec);
 }
