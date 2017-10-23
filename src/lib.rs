@@ -578,8 +578,7 @@ mod b {
                     r = r.wrapping_mul(1664525).wrapping_add(1013904223);
                     *e = $mapper(r % size);
                 }
-                let x = $make(&mut v);
-                drop(x);
+                black_box($make(&mut v));
             });
         }
     }
