@@ -100,6 +100,8 @@ extern crate prefetch;
 #[cfg(feature = "nightly")]
 extern crate test;
 
+const C: usize = 1;
+
 use std::borrow::Borrow;
 
 /// A collection of ordered items that can efficiently satisfy queries for nearby elements.
@@ -289,20 +291,23 @@ impl<T: Ord> OrderedCollection<T> {
         let mut i = 0;
         let multiplier = 64 / mem::size_of::<T>();
         let offset = multiplier + multiplier / 2;
+        let imul = multiplier << C;
+        let ioff = imul + multiplier / 2;
         let _ = offset; // avoid warning about unused w/o nightly
 
         while i < self.items.len() {
             #[cfg(feature = "nightly")]
-            {
+            let mut t = 0;
+            while t < (1 << C) {
+                let pf = imul * i + ioff + multiplier * t;
                 use prefetch::prefetch::*;
                 // unsafe is safe because pointer is never dereferenced
                 unsafe {
                     prefetch::<Read, High, Data, _>(
-                        self.items
-                            .as_ptr()
-                            .offset(((multiplier * i + offset) & self.mask) as isize),
+                        self.items.as_ptr().offset((pf & self.mask) as isize),
                     )
                 };
+                t += 1;
             }
 
             // safe because i < self.items.len()
