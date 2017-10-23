@@ -1,6 +1,6 @@
 //! This crate provides an efficient data structure for approximate lookups in ordered collections.
 //!
-//! More conretely, given a set `A` of `n` values, and a query value `x`, this library provides an
+//! More concretely, given a set `A` of `n` values, and a query value `x`, this library provides an
 //! efficient mechanism for finding the smallest value in `A` that is greater than or equal to `x`.
 //! In particular, this library caters to the important case where there are many such queries to
 //! the same array, `A`.
