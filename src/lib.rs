@@ -288,24 +288,58 @@ impl<T: Ord> OrderedCollection<T> {
         let x = x.borrow();
 
         let mut i = 0;
+
+        // this computation is a little finicky, so let's walk through it.
+        //
+        // we want to prefetch a couple of levels down in the tree from where we are.
+        // however, we can only fetch one cacheline at a time (assume a line holds 64b).
+        // we therefore need to find at what depth a single prefetch fetches all the descendants.
+        // it turns out that, at depth k under some node with index i, the leftmost child is at:
+        //
+        //   2^k * i + 2^(k-1) + 2^(k-2) + ... + 2^0 = 2^k * i + 2^k - 1
+        //
+        // this follows from the fact that the leftmost immediate child of node i is at 2i + 1 by
+        // recursively expanding i. if you're curious, the rightmost child is at:
+        //
+        //   2^k * i + 2^k + 2^(k-1) + ... + 2^1 = 2^k * i + 2^(k+1) - 1
+        //
+        // at depth k, there are 2^k children. we can fit 64/sizeof(T) children in a cacheline, so
+        // we want to use the depth k that has 64/sizeof(T) children. so, we want:
+        //
+        //   2^k = 64/sizeof(T)
+        //
+        // but, we don't actually *need* k. we only ever use 2^k. so, we can just use 64/sizeof(T)
+        // directly! nice. we call this the multiplier (because it's what we'll multiply i by).
         let multiplier = 64 / mem::size_of::<T>();
+        // now for those additions we had to do above. well, we know that the offset is really just
+        // 2^k - 1, and we know that multiplier == 2^k, so we're done. right?
+        //
+        // right?
+        //
+        // well, only sort of. the prefetch instruction fetches the cache-line that *holds* the
+        // given memory address. let's denote cache lines with []. what if we have:
+        //
+        //   [..., 2^k + 2^k-1] [2^k + 2^k, ...]
+        //
+        // essentially, we got unlucky with the alignment so that the leftmost child is not sharing
+        // a cacheline with any of the other items at that level! that's not great. so, instead, we
+        // prefetch the address that is half-way through the set of children. that way, we ensure
+        // that we prefetch at least half of the items.
         let offset = multiplier + multiplier / 2;
         let _ = offset; // avoid warning about unused w/o nightly
 
         while i < self.items.len() {
             #[cfg(feature = "nightly")]
-            {
+            // unsafe is safe because pointer is never dereferenced
+            unsafe {
                 use std::intrinsics::prefetch_read_data;
-                // unsafe is safe because pointer is never dereferenced
-                unsafe {
-                    prefetch_read_data(
-                        self.items
-                            .as_ptr()
-                            .offset(((multiplier * i + offset) & self.mask) as isize),
-                        3,
-                    )
-                };
-            }
+                prefetch_read_data(
+                    self.items
+                        .as_ptr()
+                        .offset(((multiplier * i + offset) & self.mask) as isize),
+                    3,
+                )
+            };
 
             // safe because i < self.items.len()
             i = if x <= unsafe { self.items.get_unchecked(i) }.borrow() {
