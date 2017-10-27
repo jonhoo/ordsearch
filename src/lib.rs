@@ -285,6 +285,8 @@ impl<T: Ord> OrderedCollection<T> {
     {
         use std::mem;
 
+        let x = x.borrow();
+
         let mut i = 0;
         let multiplier = 64 / mem::size_of::<T>();
         let offset = multiplier + multiplier / 2;
@@ -306,7 +308,7 @@ impl<T: Ord> OrderedCollection<T> {
             }
 
             // safe because i < self.items.len()
-            i = if x.borrow() <= unsafe { self.items.get_unchecked(i) }.borrow() {
+            i = if x <= unsafe { self.items.get_unchecked(i) }.borrow() {
                 2 * i + 1
             } else {
                 2 * i + 2
