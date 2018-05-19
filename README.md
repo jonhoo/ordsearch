@@ -4,7 +4,11 @@
 [![Documentation](https://docs.rs/ordsearch/badge.svg)](https://docs.rs/ordsearch/)
 [![Build Status](https://travis-ci.org/jonhoo/ordsearch.svg?branch=master)](https://travis-ci.org/jonhoo/ordsearch)
 
-This crate provides an efficient data structure for approximate lookups in ordered collections.
+> NOTE: This crate is currently *slower* than using `Vec::binary_search` over a pre-sorted
+> vector, contrary to the claims in the referenced paper, and is mainly presented for
+> curiosity's sake at this point.
+
+This crate provides a data structure for approximate lookups in ordered collections.
 
 More concretely, given a set `A` of `n` values, and a query value `x`, this library provides an
 efficient mechanism for finding the smallest value in `A` that is greater than or equal to `x`.
@@ -49,48 +53,48 @@ Compared to binary search over a sorted vector:
 
 ```diff,ignore
  name           sorted_vec ns/iter  this ns/iter  diff ns/iter   diff %  speedup
-+u8::l1         46                  37                      -9  -19.57%   x 1.24
--u8::l1_dup     31                  37                       6   19.35%   x 0.84
--u8::l2         44                  58                      14   31.82%   x 0.76
--u8::l2_dup     31                  56                      25   80.65%   x 0.55
--u8::l3         29                  170                    141  486.21%   x 0.17
--u8::l3_dup     30                  127                     97  323.33%   x 0.24
-+u32::l1        66                  37                     -29  -43.94%   x 1.78
-+u32::l1_dup    41                  37                      -4   -9.76%   x 1.11
-+u32::l2        85                  64                     -21  -24.71%   x 1.33
--u32::l2_dup    62                  64                       2    3.23%   x 0.97
--u32::l3        180                 380                    200  111.11%   x 0.47
--u32::l3_dup    156                 381                    225  144.23%   x 0.41
-+usize::l1      66                  37                     -29  -43.94%   x 1.78
-+usize::l1_dup  41                  37                      -4   -9.76%   x 1.11
-+usize::l2      87                  67                     -20  -22.99%   x 1.30
--usize::l2_dup  62                  77                      15   24.19%   x 0.81
--usize::l3      247                 522                    275  111.34%   x 0.47
--usize::l3_dup  203                 614                    411  202.46%   x 0.33
+-u32::l1        51                  103                     52  101.96%   x 0.50
+-u32::l1_dup    42                  90                      48  114.29%   x 0.47
+-u32::l2        67                  150                     83  123.88%   x 0.45
+-u32::l2_dup    66                  146                     80  121.21%   x 0.45
+-u32::l3        118                 352                    234  198.31%   x 0.34
+-u32::l3_dup    119                 352                    233  195.80%   x 0.34
+-u8::l1         47                  97                      50  106.38%   x 0.48
+-u8::l1_dup     36                  85                      49  136.11%   x 0.42
+-u8::l2         56                  149                     93  166.07%   x 0.38
+-u8::l2_dup     45                  141                     96  213.33%   x 0.32
+-u8::l3         68                  224                    156  229.41%   x 0.30
+-u8::l3_dup     52                  197                    145  278.85%   x 0.26
+-usize::l1      51                  105                     54  105.88%   x 0.49
+-usize::l1_dup  42                  91                      49  116.67%   x 0.46
+-usize::l2      68                  153                     85  125.00%   x 0.44
+-usize::l2_dup  67                  148                     81  120.90%   x 0.45
+-usize::l3      139                 463                    324  233.09%   x 0.30
+-usize::l3_dup  139                 467                    328  235.97%   x 0.30
 ```
 
 Compared to a `BTreeSet`:
 
 ```diff,ignore
  name           btreeset ns/iter  this ns/iter  diff ns/iter   diff %  speedup
-+u8::l1         48                37                     -11  -22.92%   x 1.30
--u8::l1_dup     35                37                       2    5.71%   x 0.95
--u8::l2         46                58                      12   26.09%   x 0.79
--u8::l2_dup     35                56                      21   60.00%   x 0.62
--u8::l3         36                170                    134  372.22%   x 0.21
--u8::l3_dup     34                127                     93  273.53%   x 0.27
-+u32::l1        66                37                     -29  -43.94%   x 1.78
-+u32::l1_dup    42                37                      -5  -11.90%   x 1.14
-+u32::l2        91                64                     -27  -29.67%   x 1.42
--u32::l2_dup    60                64                       4    6.67%   x 0.94
--u32::l3        351               380                     29    8.26%   x 0.92
--u32::l3_dup    195               381                    186   95.38%   x 0.51
-+usize::l1      66                37                     -29  -43.94%   x 1.78
-+usize::l1_dup  42                37                      -5  -11.90%   x 1.14
-+usize::l2      96                67                     -29  -30.21%   x 1.43
--usize::l2_dup  61                77                      16   26.23%   x 0.79
--usize::l3      441               522                     81   18.37%   x 0.84
--usize::l3_dup  241               614                    373  154.77%   x 0.39
++u32::l1        294               103                   -191  -64.97%   x 2.85
++u32::l1_dup    169               90                     -79  -46.75%   x 1.88
++u32::l2        364               150                   -214  -58.79%   x 2.43
++u32::l2_dup    239               146                    -93  -38.91%   x 1.64
++u32::l3        723               352                   -371  -51.31%   x 2.05
++u32::l3_dup    454               352                   -102  -22.47%   x 1.29
++u8::l1         222               97                    -125  -56.31%   x 2.29
++u8::l1_dup     155               85                     -70  -45.16%   x 1.82
++u8::l2         222               149                    -73  -32.88%   x 1.49
++u8::l2_dup     155               141                    -14   -9.03%   x 1.10
+ u8::l3         222               224                      2    0.90%   x 0.99
+-u8::l3_dup     155               197                     42   27.10%   x 0.79
++usize::l1      298               105                   -193  -64.77%   x 2.84
++usize::l1_dup  168               91                     -77  -45.83%   x 1.85
++usize::l2      368               153                   -215  -58.42%   x 2.41
++usize::l2_dup  242               148                    -94  -38.84%   x 1.64
++usize::l3      780               463                   -317  -40.64%   x 1.68
++usize::l3_dup  495               467                    -28   -5.66%   x 1.06
 ```
 
 ## Future work
