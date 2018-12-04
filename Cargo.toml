@@ -1,6 +1,6 @@
 [package]
 name = "ordsearch"
-version = "0.2.2"
+version = "0.2.3"
 
 description = "A data structure for efficient lower-bound lookups"
 readme = "README.md"
@@ -22,3 +22,4 @@ nightly = []
 
 [badges]
 travis-ci = { repository = "jonhoo/ordsearch" }
+maintenance = { status = "as-is" }
