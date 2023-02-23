@@ -23,3 +23,14 @@ nightly = []
 [badges]
 travis-ci = { repository = "jonhoo/ordsearch" }
 maintenance = { status = "as-is" }
+
+[profile.release]
+lto = "fat"
+
+[dev-dependencies]
+criterion = "0.4"
+num-traits = "0.2.15"
+
+[[bench]]
+name = "search_comparison"
+harness = false

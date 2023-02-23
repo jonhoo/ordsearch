@@ -607,13 +607,15 @@ mod b {
                     pub use super::*;
                     construction_benches!($t, u8);
                     construction_benches!($t, u32);
-                    construction_benches!($t, usize);
+                    construction_benches!($t, u64);
+                    construction_benches!($t, u128);
                 }
                 mod search {
                     pub use super::*;
                     search_benches!($t, u8);
                     search_benches!($t, u32);
-                    search_benches!($t, usize);
+                    search_benches!($t, u64);
+                    search_benches!($t, u128);
                 }
             }
         };
