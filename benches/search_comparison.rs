@@ -83,22 +83,17 @@ fn search_sorted_vec<'a, T: Ord>(c: &'a &[T], x: T) -> Option<&'a T> {
     c.binary_search(&x).ok().map(|i| &c[i])
 }
 
-fn bench_vec(cache: Cache, input: usize) {
-    let size = cache.size();
-    let mut v: Vec<_> = (0..size).collect();
-    let mut r = 0usize;
-}
-
-fn criterion_benchmark<T>(c: &mut Criterion)
+fn criterion_benchmark<T, const MAX: usize>(c: &mut Criterion)
     where
     T: TryFrom<usize> + Ord + std::ops::Rem<Output = T> + num_traits::ops::wrapping::WrappingMul,
     <T as TryFrom<usize>>::Error: core::fmt::Debug,
 {
-    let mut group = c.benchmark_group("Search");
-    for i in [2usize, 16, 128, 1024, 4069].iter() {
+    let groupname = format!("Search {}", std::any::type_name::<T>());
+    let mut group = c.benchmark_group(groupname);
+    for i in [2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4069, 8192, 16384, 32768, 65536].iter() {
         group.bench_with_input(BenchmarkId::new("sorted_vec", i), i, |b, i| {
             let size = *i;
-            let mut v: Vec<T> = (0..*i).map(|int| T::try_from(int).unwrap()).collect();
+            let mut v: Vec<T> = (0..*i).map(|int| T::try_from(int % MAX).unwrap()).collect();
             let mut r = 0usize;
             let c = make_sorted_vec(&mut v);
             b.iter(|| {
@@ -135,5 +130,11 @@ fn criterion_benchmark<T>(c: &mut Criterion)
     group.finish();
 }
 
-criterion_group!(benches, criterion_benchmark::<u8>);
+criterion_group!(benches,
+                 // criterion_benchmark::<u8, {u8::MAX as usize}>,
+                 // criterion_benchmark::<u16, {u16::MAX as usize}>,
+                 criterion_benchmark::<u32, {u32::MAX as usize}>,
+                 criterion_benchmark::<u64, {u64::MAX as usize}>,
+                 criterion_benchmark::<u128, {u64::MAX as usize}>,
+);
 criterion_main!(benches);
