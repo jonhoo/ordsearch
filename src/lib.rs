@@ -552,10 +552,21 @@ mod b {
         ($t:ident, $v:ident) => {
             mod $v {
                 use super::*;
+                /// `dup()` and `nodup()` must be not inlined to make sure
+                /// we will have the same machine code for different sizes of a test payload
+                #[inline(never)]
                 fn nodup(c: Cache, b: &mut Bencher) {
                     let mk = concat_idents!(make_, $t);
                     let s = concat_idents!(search_, $t);
                     let mapper = concat_idents!(nodup_, $v);
+                    bench_search!(c, mk, s, mapper, b);
+                }
+
+                #[inline(never)]
+                fn dup(c: Cache, b: &mut Bencher) {
+                    let mk = concat_idents!(make_, $t);
+                    let s = concat_idents!(search_, $t);
+                    let mapper = concat_idents!(dup_, $v);
                     bench_search!(c, mk, s, mapper, b);
                 }
 
@@ -572,13 +583,6 @@ mod b {
                 #[bench]
                 fn l3(b: &mut Bencher) {
                     nodup(Cache::L3, b);
-                }
-
-                fn dup(c: Cache, b: &mut Bencher) {
-                    let mk = concat_idents!(make_, $t);
-                    let s = concat_idents!(search_, $t);
-                    let mapper = concat_idents!(dup_, $v);
-                    bench_search!(c, mk, s, mapper, b);
                 }
 
                 #[bench]
@@ -648,7 +652,7 @@ mod b {
                 // Lookup the whole range to get 50% hits and 50% misses.
                 let x = $mapper(r % size);
 
-                black_box($search(&c, x).is_some());
+                black_box($search(&c, x));
             });
         };
     }
