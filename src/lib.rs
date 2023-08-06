@@ -358,11 +358,10 @@ impl<T: Ord> OrderedCollection<T> {
             };
 
             // safe because i < self.items.len()
-            i = if x <= unsafe { self.items.get_unchecked(i) }.borrow() {
-                2 * i + 1
-            } else {
-                2 * i + 2
-            };
+            let value = unsafe { self.items.get_unchecked(i) }.borrow();
+            // using branchless index update. At the moment compiler cannot reliably tranform
+            // if expressions to branchless instructions like `cmov` and `setb`
+            i = 2 * i + 1 + usize::from(x > value);
         }
 
         // we want ffs(~(i + 1))
