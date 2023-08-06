@@ -656,26 +656,27 @@ mod b {
         };
     }
 
-    fn make_this<T: Ord>(v: &mut Vec<T>) -> OrderedCollection<&T> {
-        OrderedCollection::from_slice(v)
+    fn make_this<T: Ord + Copy>(v: &mut Vec<T>) -> OrderedCollection<T> {
+        v.sort_unstable();
+        OrderedCollection::from_sorted_iter(v.into_iter().map(|x| *x))
     }
 
-    fn search_this<'a, T: Ord>(c: &OrderedCollection<&'a T>, x: T) -> Option<&'a T> {
-        c.find_gte(x).map(|v| &**v)
+    fn search_this<T: Ord>(c: &OrderedCollection<T>, x: T) -> Option<&T> {
+        c.find_gte(x).map(|v| &*v)
     }
 
     benches!(this);
 
-    fn make_btreeset<T: Ord>(v: &mut Vec<T>) -> BTreeSet<&T> {
+    fn make_btreeset<T: Ord + Copy>(v: &mut Vec<T>) -> BTreeSet<T> {
         use std::iter::FromIterator;
-        BTreeSet::from_iter(v.iter())
+        BTreeSet::from_iter(v.iter().copied())
     }
 
-    fn search_btreeset<'a, T: Ord>(c: &BTreeSet<&'a T>, x: T) -> Option<&'a T> {
+    fn search_btreeset<T: Ord>(c: &BTreeSet<T>, x: T) -> Option<&T> {
         use std::collections::Bound;
         c.range((Bound::Included(x), Bound::Unbounded))
             .next()
-            .map(|v| &**v)
+            .map(|v| &*v)
     }
 
     benches!(btreeset);
