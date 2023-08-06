@@ -151,14 +151,14 @@ fn search_bench_case<const MAX: usize, T, Coll>(
         let v: Vec<T> = if duplicates {
             (0..*i)
                 .map(|int| {
-                    let int = std::cmp::max(int, MAX);
+                    let int = std::cmp::min(int, MAX);
                     T::try_from(int / 16 * 16).unwrap()
                 })
                 .collect()
         } else {
             (0..*i)
                 .map(|int| {
-                    let int = std::cmp::max(int, MAX);
+                    let int = std::cmp::min(int, MAX);
                     T::try_from(int).unwrap()
                 })
                 .collect()
@@ -167,6 +167,7 @@ fn search_bench_case<const MAX: usize, T, Coll>(
         let c = setup_fun(v);
         b.iter(|| {
             r = r.wrapping_mul(1664525).wrapping_add(1013904223);
+            let r = std::cmp::min(r, MAX);
             let x = T::try_from(r % size).unwrap();
             let _res = black_box(search_fun(&c, x));
         })
@@ -192,14 +193,14 @@ fn construction_bench_case<const MAX: usize, T, Coll>(
         let mut v: Vec<T> = if duplicates {
             (0..*i)
                 .map(|int| {
-                    let int = std::cmp::max(int, MAX);
+                    let int = std::cmp::min(int, MAX);
                     T::try_from(int / 16 * 16).unwrap()
                 })
                 .collect()
         } else {
             (0..*i)
                 .map(|int| {
-                    let int = std::cmp::max(int, MAX);
+                    let int = std::cmp::min(int, MAX);
                     T::try_from(int).unwrap()
                 })
                 .collect()
@@ -208,9 +209,13 @@ fn construction_bench_case<const MAX: usize, T, Coll>(
         for e in v.iter_mut() {
             r = r.wrapping_mul(1664525).wrapping_add(1013904223);
             if duplicates {
-                *e = T::try_from((r % size) / 16 * 16).unwrap();
+                let r = (r % size) / 16 * 16;
+                let r = std::cmp::min(r, MAX);
+                *e = T::try_from(r).unwrap();
             } else {
-                *e = T::try_from((r % size) * 2).unwrap();
+                let r = (r % size) * 2;
+                let r = std::cmp::min(r, MAX);
+                *e = T::try_from(r).unwrap();
             }
         }
 
