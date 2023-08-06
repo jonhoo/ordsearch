@@ -80,7 +80,7 @@ fn make_sorted_vec<T: Ord>(mut v: Vec<T>) -> Vec<T> {
     v
 }
 
-fn search_sorted_vec<'a, T: Ord>(c: &'a &[T], x: T) -> Option<&'a T> {
+fn search_sorted_vec<'a, T: Ord>(c: &'a Vec<T>, x: T) -> Option<&'a T> {
     c.binary_search(&x).ok().map(|i| &c[i])
 }
 
@@ -89,37 +89,56 @@ fn criterion_benchmark<T, const MAX: usize>(c: &mut Criterion)
     T: TryFrom<usize> + Ord + std::ops::Rem<Output = T> + num_traits::ops::wrapping::WrappingMul,
     <T as TryFrom<usize>>::Error: core::fmt::Debug,
 {
-    let groupname = format!("Search {}", std::any::type_name::<T>());
-    let mut group = c.benchmark_group(groupname);
-    for i in [2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4069, 8192, 16384, 32768, 65536].iter() {
-        // search_bench_case("sorted_vec", make_sorted_vec::<T>, search_sorted_vec, &mut group, i);
-        search_bench_case("btreeset", make_btreeset::<T>, search_btreeset, &mut group, i);
-        search_bench_case("ordsearch", make_this::<T>, search_this, &mut group, i);
+    let sizes = [8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4069, 8192, 16384, 32768, 65536];
+
+    {
+        let groupname = format!("Search {}", std::any::type_name::<T>());
+        let mut group = c.benchmark_group(groupname);
+        for i in sizes.iter() {
+            search_bench_case("sorted_vec", make_sorted_vec::<T>, search_sorted_vec, &mut group, i, false);
+            search_bench_case("btreeset", make_btreeset::<T>, search_btreeset, &mut group, i, false);
+            search_bench_case("ordsearch", make_this::<T>, search_this, &mut group, i, false);
+        }
+        group.finish();
     }
-    group.finish();
+
+    {
+        let groupname = format!("Search (with duplicates) {}", std::any::type_name::<T>());
+        let mut group = c.benchmark_group(groupname);
+        for i in sizes.iter() {
+            search_bench_case("sorted_vec", make_sorted_vec::<T>, search_sorted_vec, &mut group, i, true);
+            search_bench_case("btreeset", make_btreeset::<T>, search_btreeset, &mut group, i, true);
+            search_bench_case("ordsearch", make_this::<T>, search_this, &mut group, i, true);
+        }
+        group.finish();
+    }
 }
 
-fn search_bench_case<T, Coll>(name: &str, setup_fun: impl Fn(Vec<T>) -> Coll, search_fun: impl Fn(&Coll, T) -> Option<&T>, group: &mut BenchmarkGroup<WallTime>, i: &usize)
+fn search_bench_case<T, Coll>(name: &str, setup_fun: impl Fn(Vec<T>) -> Coll, search_fun: impl Fn(&Coll, T) -> Option<&T>, group: &mut BenchmarkGroup<WallTime>, i: &usize, duplicates: bool)
     where
     T: TryFrom<usize> + Ord + std::ops::Rem<Output = T> + num_traits::ops::wrapping::WrappingMul,
     <T as TryFrom<usize>>::Error: core::fmt::Debug,
 {
     group.bench_with_input(BenchmarkId::new(name, i), i, |b, i| {
         let size = *i;
-        let mut v: Vec<T> = (0..*i).map(|int| T::try_from(int).unwrap()).collect();
+        let mut v: Vec<T> = if duplicates {
+            (0..*i).map(|mut int| T::try_from(int / 16 * 16).unwrap()).collect()
+        } else {
+            (0..*i).map(|int| T::try_from(int).unwrap()).collect()
+        };
         let mut r = 0usize;
         let c = setup_fun(v);
         b.iter(|| {
             r = r.wrapping_mul(1664525).wrapping_add(1013904223);
             let x = T::try_from(r % size).unwrap();
-            search_fun(&c, x);
+            let _res = black_box(search_fun(&c, x));
         })
     });
 }
 
 criterion_group!(benches,
-                 // criterion_benchmark::<u8, {u8::MAX as usize}>,
-                 // criterion_benchmark::<u16, {u16::MAX as usize}>,
+                 criterion_benchmark::<u8, {u8::MAX as usize}>,
+                 criterion_benchmark::<u16, {u16::MAX as usize}>,
                  criterion_benchmark::<u32, {u32::MAX as usize}>,
                  criterion_benchmark::<u64, {u64::MAX as usize}>,
                  criterion_benchmark::<u128, {u64::MAX as usize}>,
