@@ -274,7 +274,7 @@ impl<T: Ord> OrderedCollection<T> {
     /// ```
     pub fn from_slice<'a>(v: &'a mut [T]) -> OrderedCollection<&'a T> {
         v.sort_unstable();
-        OrderedCollection::from_sorted_iter(v.into_iter().map(|x| &*x))
+        OrderedCollection::from_sorted_iter(v.iter_mut().map(|x| &*x))
     }
 
     /// Find the smallest value `v` such that `v >= x`.
