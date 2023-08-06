@@ -56,7 +56,7 @@ where
         let groupname = format!("Search {}", std::any::type_name::<T>());
         let mut group = c.benchmark_group(groupname);
         for i in sizes.iter() {
-            search_bench_case(
+            search_bench_case::<MAX, _, _>(
                 "sorted_vec",
                 make_sorted_vec::<T>,
                 search_sorted_vec,
@@ -64,7 +64,7 @@ where
                 i,
                 false,
             );
-            search_bench_case(
+            search_bench_case::<MAX, _, _>(
                 "btreeset",
                 make_btreeset::<T>,
                 search_btreeset,
@@ -72,7 +72,7 @@ where
                 i,
                 false,
             );
-            search_bench_case(
+            search_bench_case::<MAX, _, _>(
                 "ordsearch",
                 make_this::<T>,
                 search_this,
@@ -88,25 +88,25 @@ where
         let groupname = format!("Search (with duplicates) {}", std::any::type_name::<T>());
         let mut group = c.benchmark_group(groupname);
         for i in sizes.iter() {
-            search_bench_case(
+            search_bench_case::<MAX, T, _>(
                 "sorted_vec",
-                make_sorted_vec::<T>,
+                make_sorted_vec,
                 search_sorted_vec,
                 &mut group,
                 i,
                 true,
             );
-            search_bench_case(
+            search_bench_case::<MAX, T, _>(
                 "btreeset",
-                make_btreeset::<T>,
+                make_btreeset,
                 search_btreeset,
                 &mut group,
                 i,
                 true,
             );
-            search_bench_case(
+            search_bench_case::<MAX, T, _>(
                 "ordsearch",
-                make_this::<T>,
+                make_this,
                 search_this,
                 &mut group,
                 i,
@@ -120,9 +120,9 @@ where
         let groupname = format!("Construction {}", std::any::type_name::<T>());
         let mut group = c.benchmark_group(groupname);
         for i in sizes.iter() {
-            construction_bench_case("sorted_vec", make_sorted_vec::<T>, &mut group, i, false);
-            construction_bench_case("btreeset", make_btreeset::<T>, &mut group, i, false);
-            construction_bench_case("ordsearch", make_this::<T>, &mut group, i, false);
+            construction_bench_case::<MAX, T, _>("sorted_vec", make_sorted_vec, &mut group, i, false);
+            construction_bench_case::<MAX, T, _>("btreeset", make_btreeset, &mut group, i, false);
+            construction_bench_case::<MAX, T, _>("ordsearch", make_this, &mut group, i, false);
         }
         group.finish();
     }
@@ -134,15 +134,15 @@ where
         );
         let mut group = c.benchmark_group(groupname);
         for i in sizes.iter() {
-            construction_bench_case("sorted_vec", make_sorted_vec::<T>, &mut group, i, false);
-            construction_bench_case("btreeset", make_btreeset::<T>, &mut group, i, false);
-            construction_bench_case("ordsearch", make_this::<T>, &mut group, i, false);
+            construction_bench_case::<MAX, T, _>("sorted_vec", make_sorted_vec, &mut group, i, false);
+            construction_bench_case::<MAX, T, _>("btreeset", make_btreeset, &mut group, i, false);
+            construction_bench_case::<MAX, T, _>("ordsearch", make_this, &mut group, i, false);
         }
         group.finish();
     }
 }
 
-fn search_bench_case<T, Coll>(
+fn search_bench_case<const MAX: usize, T, Coll>(
     name: &str,
     setup_fun: impl Fn(Vec<T>) -> Coll,
     search_fun: impl Fn(&Coll, T) -> Option<&T>,
@@ -155,12 +155,18 @@ fn search_bench_case<T, Coll>(
 {
     group.bench_with_input(BenchmarkId::new(name, i), i, |b, i| {
         let size = *i;
-        let mut v: Vec<T> = if duplicates {
+        let v: Vec<T> = if duplicates {
             (0..*i)
-                .map(|mut int| T::try_from(int / 16 * 16).unwrap())
+                .map(|int| {
+                    let int = std::cmp::max(int, MAX);
+                    T::try_from(int / 16 * 16).unwrap()
+                })
                 .collect()
         } else {
-            (0..*i).map(|int| T::try_from(int).unwrap()).collect()
+            (0..*i).map(|int| {
+                let int = std::cmp::max(int, MAX);
+                T::try_from(int).unwrap()
+            }).collect()
         };
         let mut r = 0usize;
         let c = setup_fun(v);
@@ -172,7 +178,7 @@ fn search_bench_case<T, Coll>(
     });
 }
 
-fn construction_bench_case<T, Coll>(
+fn construction_bench_case<const MAX: usize, T, Coll>(
     name: &str,
     setup_fun: impl Fn(Vec<T>) -> Coll,
     group: &mut BenchmarkGroup<WallTime>,
@@ -190,10 +196,16 @@ fn construction_bench_case<T, Coll>(
         let size = *i;
         let mut v: Vec<T> = if duplicates {
             (0..*i)
-                .map(|mut int| T::try_from(int / 16 * 16).unwrap())
+                .map(|int| {
+                    let int = std::cmp::max(int, MAX);
+                    T::try_from(int / 16 * 16).unwrap()
+                })
                 .collect()
         } else {
-            (0..*i).map(|int| T::try_from(int).unwrap()).collect()
+            (0..*i).map(|int| {
+                let int = std::cmp::max(int, MAX);
+                T::try_from(int).unwrap()
+            }).collect()
         };
         let mut r = 0usize;
         for e in v.iter_mut() {
