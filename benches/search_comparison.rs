@@ -7,39 +7,20 @@ use criterion::{
     Criterion,
 };
 use ordsearch::OrderedCollection;
-use std::{collections::BTreeSet, convert::TryFrom, ops::Rem};
+use std::{collections::BTreeSet, convert::TryFrom};
 
-fn make_this<T: Ord>(mut v: Vec<T>) -> OrderedCollection<T> {
-    v.sort_unstable();
-    OrderedCollection::from_sorted_iter(v.into_iter())
-}
+criterion_main!(benches);
 
-fn search_this<T: Ord>(c: &OrderedCollection<T>, x: T) -> Option<&T> {
-    c.find_gte(x).map(|v| &*v)
-}
+criterion_group!(
+    benches,
+    benchmarks_for::<u8, { u8::MAX as usize }>,
+    benchmarks_for::<u16, { u16::MAX as usize }>,
+    benchmarks_for::<u32, { u32::MAX as usize }>,
+    benchmarks_for::<u64, { u64::MAX as usize }>,
+    benchmarks_for::<u128, { u64::MAX as usize }>,
+);
 
-fn make_btreeset<T: Ord>(v: Vec<T>) -> BTreeSet<T> {
-    use std::iter::FromIterator;
-    BTreeSet::from_iter(v.into_iter())
-}
-
-fn search_btreeset<T: Ord>(c: &BTreeSet<T>, x: T) -> Option<&T> {
-    use std::collections::Bound;
-    c.range((Bound::Included(x), Bound::Unbounded))
-        .next()
-        .map(|v| &*v)
-}
-
-fn make_sorted_vec<T: Ord>(mut v: Vec<T>) -> Vec<T> {
-    v.sort_unstable();
-    v
-}
-
-fn search_sorted_vec<'a, T: Ord>(c: &'a Vec<T>, x: T) -> Option<&'a T> {
-    c.binary_search(&x).ok().map(|i| &c[i])
-}
-
-fn criterion_benchmark<T, const MAX: usize>(c: &mut Criterion)
+fn benchmarks_for<T, const MAX: usize>(c: &mut Criterion)
 where
     T: TryFrom<usize>
         + Ord
@@ -56,25 +37,25 @@ where
         let groupname = format!("Search {}", std::any::type_name::<T>());
         let mut group = c.benchmark_group(groupname);
         for i in sizes.iter() {
-            search_bench_case::<MAX, _, _>(
+            search_bench_case::<MAX, T, _>(
                 "sorted_vec",
-                make_sorted_vec::<T>,
+                make_sorted_vec,
                 search_sorted_vec,
                 &mut group,
                 i,
                 false,
             );
-            search_bench_case::<MAX, _, _>(
+            search_bench_case::<MAX, T, _>(
                 "btreeset",
-                make_btreeset::<T>,
+                make_btreeset,
                 search_btreeset,
                 &mut group,
                 i,
                 false,
             );
-            search_bench_case::<MAX, _, _>(
+            search_bench_case::<MAX, T, _>(
                 "ordsearch",
-                make_this::<T>,
+                make_this,
                 search_this,
                 &mut group,
                 i,
@@ -120,7 +101,13 @@ where
         let groupname = format!("Construction {}", std::any::type_name::<T>());
         let mut group = c.benchmark_group(groupname);
         for i in sizes.iter() {
-            construction_bench_case::<MAX, T, _>("sorted_vec", make_sorted_vec, &mut group, i, false);
+            construction_bench_case::<MAX, T, _>(
+                "sorted_vec",
+                make_sorted_vec,
+                &mut group,
+                i,
+                false,
+            );
             construction_bench_case::<MAX, T, _>("btreeset", make_btreeset, &mut group, i, false);
             construction_bench_case::<MAX, T, _>("ordsearch", make_this, &mut group, i, false);
         }
@@ -134,7 +121,13 @@ where
         );
         let mut group = c.benchmark_group(groupname);
         for i in sizes.iter() {
-            construction_bench_case::<MAX, T, _>("sorted_vec", make_sorted_vec, &mut group, i, false);
+            construction_bench_case::<MAX, T, _>(
+                "sorted_vec",
+                make_sorted_vec,
+                &mut group,
+                i,
+                false,
+            );
             construction_bench_case::<MAX, T, _>("btreeset", make_btreeset, &mut group, i, false);
             construction_bench_case::<MAX, T, _>("ordsearch", make_this, &mut group, i, false);
         }
@@ -163,10 +156,12 @@ fn search_bench_case<const MAX: usize, T, Coll>(
                 })
                 .collect()
         } else {
-            (0..*i).map(|int| {
-                let int = std::cmp::max(int, MAX);
-                T::try_from(int).unwrap()
-            }).collect()
+            (0..*i)
+                .map(|int| {
+                    let int = std::cmp::max(int, MAX);
+                    T::try_from(int).unwrap()
+                })
+                .collect()
         };
         let mut r = 0usize;
         let c = setup_fun(v);
@@ -202,10 +197,12 @@ fn construction_bench_case<const MAX: usize, T, Coll>(
                 })
                 .collect()
         } else {
-            (0..*i).map(|int| {
-                let int = std::cmp::max(int, MAX);
-                T::try_from(int).unwrap()
-            }).collect()
+            (0..*i)
+                .map(|int| {
+                    let int = std::cmp::max(int, MAX);
+                    T::try_from(int).unwrap()
+                })
+                .collect()
         };
         let mut r = 0usize;
         for e in v.iter_mut() {
@@ -228,12 +225,32 @@ fn construction_bench_case<const MAX: usize, T, Coll>(
     });
 }
 
-criterion_group!(
-    benches,
-    criterion_benchmark::<u8, { u8::MAX as usize }>,
-    criterion_benchmark::<u16, { u16::MAX as usize }>,
-    criterion_benchmark::<u32, { u32::MAX as usize }>,
-    criterion_benchmark::<u64, { u64::MAX as usize }>,
-    criterion_benchmark::<u128, { u64::MAX as usize }>,
-);
-criterion_main!(benches);
+fn make_this<T: Ord>(mut v: Vec<T>) -> OrderedCollection<T> {
+    v.sort_unstable();
+    OrderedCollection::from_sorted_iter(v.into_iter())
+}
+
+fn search_this<T: Ord>(c: &OrderedCollection<T>, x: T) -> Option<&T> {
+    c.find_gte(x).map(|v| &*v)
+}
+
+fn make_btreeset<T: Ord>(v: Vec<T>) -> BTreeSet<T> {
+    use std::iter::FromIterator;
+    BTreeSet::from_iter(v.into_iter())
+}
+
+fn search_btreeset<T: Ord>(c: &BTreeSet<T>, x: T) -> Option<&T> {
+    use std::collections::Bound;
+    c.range((Bound::Included(x), Bound::Unbounded))
+        .next()
+        .map(|v| &*v)
+}
+
+fn make_sorted_vec<T: Ord>(mut v: Vec<T>) -> Vec<T> {
+    v.sort_unstable();
+    v
+}
+
+fn search_sorted_vec<'a, T: Ord>(c: &'a Vec<T>, x: T) -> Option<&'a T> {
+    c.binary_search(&x).ok().map(|i| &c[i])
+}
