@@ -2,7 +2,7 @@ extern crate criterion;
 extern crate ordsearch;
 extern crate num_traits;
 
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, BenchmarkGroup, measurement::WallTime};
 use ordsearch::OrderedCollection;
 use std::{collections::BTreeSet, ops::Rem, convert::TryFrom};
 
@@ -54,29 +54,30 @@ fn dup_u32(i: usize) -> u32 {
     dup_usize(i) as u32
 }
 
-fn make_this<T: Ord>(v: &mut Vec<T>) -> OrderedCollection<&T> {
-    OrderedCollection::from_slice(v)
+fn make_this<T: Ord>(mut v: Vec<T>) -> OrderedCollection<T> {
+    v.sort_unstable();
+    OrderedCollection::from_sorted_iter(v.into_iter())
 }
 
-fn search_this<'a, T: Ord>(c: &OrderedCollection<&'a T>, x: T) -> Option<&'a T> {
-    c.find_gte(x).map(|v| &**v)
+fn search_this<T: Ord>(c: &OrderedCollection<T>, x: T) -> Option<&T> {
+    c.find_gte(x).map(|v| &*v)
 }
 
-fn make_btreeset<T: Ord>(v: &mut Vec<T>) -> BTreeSet<&T> {
+fn make_btreeset<T: Ord>(v: Vec<T>) -> BTreeSet<T> {
     use std::iter::FromIterator;
-    BTreeSet::from_iter(v.iter())
+    BTreeSet::from_iter(v.into_iter())
 }
 
-fn search_btreeset<'a, T: Ord>(c: &BTreeSet<&'a T>, x: T) -> Option<&'a T> {
+fn search_btreeset<T: Ord>(c: &BTreeSet<T>, x: T) -> Option<&T> {
     use std::collections::Bound;
     c.range((Bound::Included(x), Bound::Unbounded))
         .next()
-        .map(|v| &**v)
+        .map(|v| &*v)
 }
 
-fn make_sorted_vec<T: Ord>(v: &mut Vec<T>) -> &[T] {
+fn make_sorted_vec<T: Ord>(mut v: Vec<T>) -> Vec<T> {
     v.sort_unstable();
-    &v[..]
+    v
 }
 
 fn search_sorted_vec<'a, T: Ord>(c: &'a &[T], x: T) -> Option<&'a T> {
@@ -91,43 +92,29 @@ fn criterion_benchmark<T, const MAX: usize>(c: &mut Criterion)
     let groupname = format!("Search {}", std::any::type_name::<T>());
     let mut group = c.benchmark_group(groupname);
     for i in [2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4069, 8192, 16384, 32768, 65536].iter() {
-        group.bench_with_input(BenchmarkId::new("sorted_vec", i), i, |b, i| {
-            let size = *i;
-            let mut v: Vec<T> = (0..*i).map(|int| T::try_from(int % MAX).unwrap()).collect();
-            let mut r = 0usize;
-            let c = make_sorted_vec(&mut v);
-            b.iter(|| {
-                r = r.wrapping_mul(1664525).wrapping_add(1013904223);
-                let x = T::try_from(r % size).unwrap();
-                search_sorted_vec(&c, x);
-            })
-        });
-
-        group.bench_with_input(BenchmarkId::new("btreeset", i), i, |b, i| {
-            let size = *i;
-            let mut v: Vec<T> = (0..*i).map(|int| T::try_from(int).unwrap()).collect();
-            let mut r = 0usize;
-            let c = make_btreeset(&mut v);
-            b.iter(|| {
-                r = r.wrapping_mul(1664525).wrapping_add(1013904223);
-                let x = T::try_from(r % size).unwrap();
-                search_btreeset(&c, x);
-            })
-        });
-
-        group.bench_with_input(BenchmarkId::new("ordsearch", i), i, |b, i| {
-            let size = *i;
-            let mut v: Vec<T> = (0..*i).map(|int| T::try_from(int).unwrap()).collect();
-            let mut r = 0usize;
-            let c = make_this(&mut v);
-            b.iter(|| {
-                r = r.wrapping_mul(1664525).wrapping_add(1013904223);
-                let x = T::try_from(r % size).unwrap();
-                search_this(&c, x);
-            })
-        });
+        // search_bench_case("sorted_vec", make_sorted_vec::<T>, search_sorted_vec, &mut group, i);
+        search_bench_case("btreeset", make_btreeset::<T>, search_btreeset, &mut group, i);
+        search_bench_case("ordsearch", make_this::<T>, search_this, &mut group, i);
     }
     group.finish();
+}
+
+fn search_bench_case<T, Coll>(name: &str, setup_fun: impl Fn(Vec<T>) -> Coll, search_fun: impl Fn(&Coll, T) -> Option<&T>, group: &mut BenchmarkGroup<WallTime>, i: &usize)
+    where
+    T: TryFrom<usize> + Ord + std::ops::Rem<Output = T> + num_traits::ops::wrapping::WrappingMul,
+    <T as TryFrom<usize>>::Error: core::fmt::Debug,
+{
+    group.bench_with_input(BenchmarkId::new(name, i), i, |b, i| {
+        let size = *i;
+        let mut v: Vec<T> = (0..*i).map(|int| T::try_from(int).unwrap()).collect();
+        let mut r = 0usize;
+        let c = setup_fun(v);
+        b.iter(|| {
+            r = r.wrapping_mul(1664525).wrapping_add(1013904223);
+            let x = T::try_from(r % size).unwrap();
+            search_fun(&c, x);
+        })
+    });
 }
 
 criterion_group!(benches,
