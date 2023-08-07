@@ -663,7 +663,7 @@ mod b {
 
     fn make_this<T: Ord + Copy>(v: &mut Vec<T>) -> OrderedCollection<T> {
         v.sort_unstable();
-        OrderedCollection::from_sorted_iter(v.into_iter().map(|x| *x))
+        OrderedCollection::from_sorted_iter(v.iter().copied())
     }
 
     fn search_this<T: Ord>(c: &OrderedCollection<T>, x: T) -> Option<&T> {
