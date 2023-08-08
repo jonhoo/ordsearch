@@ -7,7 +7,10 @@ use criterion::{
     Criterion,
 };
 use ordsearch::OrderedCollection;
-use std::{collections::BTreeSet, convert::TryFrom};
+use std::{collections::BTreeSet, convert::TryFrom, time::Duration};
+
+const WARM_UP_TIME: Duration = Duration::from_millis(500);
+const MEASUREMENT_TIME: Duration = Duration::from_millis(1000);
 
 criterion_main!(benches);
 
@@ -36,6 +39,8 @@ where
     {
         let groupname = format!("Search {}", std::any::type_name::<T>());
         let mut group = c.benchmark_group(groupname);
+        group.warm_up_time(WARM_UP_TIME).measurement_time(MEASUREMENT_TIME);
+
         for i in sizes.iter() {
             search_bench_case::<MAX, T, _>(
                 "sorted_vec",
@@ -68,6 +73,8 @@ where
     {
         let groupname = format!("Search (with duplicates) {}", std::any::type_name::<T>());
         let mut group = c.benchmark_group(groupname);
+        group.warm_up_time(WARM_UP_TIME).measurement_time(MEASUREMENT_TIME);
+
         for i in sizes.iter() {
             search_bench_case::<MAX, T, _>(
                 "sorted_vec",
@@ -100,6 +107,8 @@ where
     {
         let groupname = format!("Construction {}", std::any::type_name::<T>());
         let mut group = c.benchmark_group(groupname);
+        group.warm_up_time(WARM_UP_TIME).measurement_time(MEASUREMENT_TIME);
+
         for i in sizes.iter() {
             construction_bench_case::<MAX, T, _>(
                 "sorted_vec",
@@ -120,6 +129,8 @@ where
             std::any::type_name::<T>()
         );
         let mut group = c.benchmark_group(groupname);
+        group.warm_up_time(WARM_UP_TIME).measurement_time(MEASUREMENT_TIME);
+
         for i in sizes.iter() {
             construction_bench_case::<MAX, T, _>(
                 "sorted_vec",
