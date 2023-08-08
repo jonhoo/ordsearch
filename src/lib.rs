@@ -135,9 +135,6 @@ use std::borrow::Borrow;
 /// ```
 pub struct OrderedCollection<T> {
     items: Vec<T>,
-
-    #[cfg(feature = "nightly")]
-    mask: usize,
 }
 
 impl<T: Ord> From<Vec<T>> for OrderedCollection<T> {
@@ -182,6 +179,45 @@ where
 }
 
 impl<T: Ord> OrderedCollection<T> {
+    // this computation is a little finicky, so let's walk through it.
+    //
+    // we want to prefetch a couple of levels down in the tree from where we are.
+    // however, we can only fetch one cacheline at a time (assume a line holds 64b).
+    // we therefore need to find at what depth a single prefetch fetches all the descendants.
+    // it turns out that, at depth k under some node with index i, the leftmost child is at:
+    //
+    //   2^k * i + 2^(k-1) + 2^(k-2) + ... + 2^0 = 2^k * i + 2^k - 1
+    //
+    // this follows from the fact that the leftmost immediate child of node i is at 2i + 1 by
+    // recursively expanding i. if you're curious, the rightmost child is at:
+    //
+    //   2^k * i + 2^k + 2^(k-1) + ... + 2^1 = 2^k * i + 2^(k+1) - 1
+    //
+    // at depth k, there are 2^k children. we can fit 64/sizeof(T) children in a cacheline, so
+    // we want to use the depth k that has 64/sizeof(T) children. so, we want:
+    //
+    //   2^k = 64/sizeof(T)
+    //
+    // but, we don't actually *need* k. we only ever use 2^k. so, we can just use 64/sizeof(T)
+    // directly! nice. we call this the multiplier (because it's what we'll multiply i by).
+    const MULTIPLIER: usize = 64 / std::mem::size_of::<T>();
+
+    // now for those additions we had to do above. well, we know that the offset is really just
+    // 2^k - 1, and we know that multiplier == 2^k, so we're done. right?
+    //
+    // right?
+    //
+    // well, only sort of. the prefetch instruction fetches the cache-line that *holds* the
+    // given memory address. let's denote cache lines with []. what if we have:
+    //
+    //   [..., 2^k + 2^k-1] [2^k + 2^k, ...]
+    //
+    // essentially, we got unlucky with the alignment so that the leftmost child is not sharing
+    // a cacheline with any of the other items at that level! that's not great. so, instead, we
+    // prefetch the address that is half-way through the set of children. that way, we ensure
+    // that we prefetch at least half of the items.
+    const OFFSET: usize = Self::MULTIPLIER + Self::MULTIPLIER / 2;
+
     /// Construct a new `OrderedCollection` from an iterator over sorted elements.
     ///
     /// Note that if the iterator is *not* sorted, no error will be given, but lookups will give
@@ -243,20 +279,6 @@ impl<T: Ord> OrderedCollection<T> {
         // it's now safe to set the length, since all `n` elements have been inserted.
         unsafe { v.set_len(n) };
 
-        #[cfg(feature = "nightly")]
-        {
-            let mut mask = 1;
-            while mask <= n {
-                mask <<= 1;
-            }
-            mask -= 1;
-
-            OrderedCollection {
-                items: v,
-                mask: mask,
-            }
-        }
-        #[cfg(not(feature = "nightly"))]
         OrderedCollection { items: v }
     }
 
@@ -299,63 +321,13 @@ impl<T: Ord> OrderedCollection<T> {
         T: Borrow<X>,
         X: Ord,
     {
-        use std::mem;
-
         let x = x.borrow();
-
         let mut i = 0;
-
-        // this computation is a little finicky, so let's walk through it.
-        //
-        // we want to prefetch a couple of levels down in the tree from where we are.
-        // however, we can only fetch one cacheline at a time (assume a line holds 64b).
-        // we therefore need to find at what depth a single prefetch fetches all the descendants.
-        // it turns out that, at depth k under some node with index i, the leftmost child is at:
-        //
-        //   2^k * i + 2^(k-1) + 2^(k-2) + ... + 2^0 = 2^k * i + 2^k - 1
-        //
-        // this follows from the fact that the leftmost immediate child of node i is at 2i + 1 by
-        // recursively expanding i. if you're curious, the rightmost child is at:
-        //
-        //   2^k * i + 2^k + 2^(k-1) + ... + 2^1 = 2^k * i + 2^(k+1) - 1
-        //
-        // at depth k, there are 2^k children. we can fit 64/sizeof(T) children in a cacheline, so
-        // we want to use the depth k that has 64/sizeof(T) children. so, we want:
-        //
-        //   2^k = 64/sizeof(T)
-        //
-        // but, we don't actually *need* k. we only ever use 2^k. so, we can just use 64/sizeof(T)
-        // directly! nice. we call this the multiplier (because it's what we'll multiply i by).
-        let multiplier = 64 / mem::size_of::<T>();
-        // now for those additions we had to do above. well, we know that the offset is really just
-        // 2^k - 1, and we know that multiplier == 2^k, so we're done. right?
-        //
-        // right?
-        //
-        // well, only sort of. the prefetch instruction fetches the cache-line that *holds* the
-        // given memory address. let's denote cache lines with []. what if we have:
-        //
-        //   [..., 2^k + 2^k-1] [2^k + 2^k, ...]
-        //
-        // essentially, we got unlucky with the alignment so that the leftmost child is not sharing
-        // a cacheline with any of the other items at that level! that's not great. so, instead, we
-        // prefetch the address that is half-way through the set of children. that way, we ensure
-        // that we prefetch at least half of the items.
-        let offset = multiplier + multiplier / 2;
-        let _ = offset; // avoid warning about unused w/o nightly
+        let mask = prefetch_mask(self.items.len());
 
         while i < self.items.len() {
-            #[cfg(feature = "nightly")]
-            // unsafe is safe because pointer is never dereferenced
-            unsafe {
-                use std::intrinsics::prefetch_read_data;
-                prefetch_read_data(
-                    self.items
-                        .as_ptr()
-                        .offset(((multiplier * i + offset) & self.mask) as isize),
-                    3,
-                )
-            };
+            let offset = (Self::MULTIPLIER * i + Self::OFFSET) & mask;
+            do_prefetch(self.items.as_ptr().wrapping_add(offset));
 
             // safe because i < self.items.len()
             let value = unsafe { self.items.get_unchecked(i) }.borrow();
@@ -376,9 +348,38 @@ impl<T: Ord> OrderedCollection<T> {
     }
 }
 
+#[cfg(feature = "nightly")]
+#[inline(always)]
+fn do_prefetch<T>(addr: *const T) {
+    unsafe {
+        std::intrinsics::prefetch_read_data(addr, 3);
+    }
+}
+
+#[cfg(not(feature = "nightly"))]
+fn do_prefetch<T>(_addr: *const T) {}
+
+/// Calculates prefetch mask for a given collection size.
+///
+/// Creates binary mask that fully covers given [`usize`] value (eg. for the value `0b100` the mask is `0b111`).
+/// Prefetch mask is used to keep an element address inside an array boundaries when prefetching next values from the
+/// memory. Although, it is totally valid to prefetch invalid addresses from x86 point of view[^1],
+/// on some CPUs it can lead to performance degradation[^2].
+///
+/// [^1]: [Intel® 64 and IA-32 Architectures Software Developer’s Manual](https://software.intel.com/en-us/download/intel-64-and-ia-32-architectures-sdm-combined-volumes-1-2a-2b-2c-2d-3a-3b-3c-3d-and-4)
+///
+/// [^2]: [Array Layouts for Comparison-Based Searching. Section 5.3](https://arxiv.org/pdf/1509.05053.pdf)
+fn prefetch_mask(n: usize) -> usize {
+    if n > 0 {
+        usize::max_value() >> n.leading_zeros()
+    } else {
+        0
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::OrderedCollection;
+    use super::*;
 
     #[test]
     fn complete_exact() {
@@ -450,6 +451,16 @@ mod tests {
             assert_eq!(x.find_gte(i), Some(&256));
         }
         assert_eq!(x.find_gte(257), None);
+    }
+
+    #[test]
+    fn check_mask() {
+        assert_eq!(prefetch_mask(0), 0b000);
+        assert_eq!(prefetch_mask(1), 0b001);
+        assert_eq!(prefetch_mask(2), 0b011);
+        assert_eq!(prefetch_mask(3), 0b011);
+        assert_eq!(prefetch_mask(4), 0b111);
+        assert_eq!(prefetch_mask(usize::max_value()), usize::max_value());
     }
 }
 
