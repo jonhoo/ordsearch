@@ -4,7 +4,7 @@ extern crate ordsearch;
 
 use criterion::{
     black_box, criterion_group, criterion_main, measurement::WallTime, BenchmarkGroup, BenchmarkId,
-    Criterion,
+    Criterion, PlotConfiguration, AxisScale,
 };
 use ordsearch::OrderedCollection;
 use std::{collections::BTreeSet, convert::TryFrom, time::Duration};
@@ -32,14 +32,18 @@ where
         + Clone,
     <T as TryFrom<usize>>::Error: core::fmt::Debug,
 {
+    let plot_config = PlotConfiguration::default()
+        .summary_scale(AxisScale::Logarithmic);
+
     let sizes = [
         8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4069, 8192, 16384, 32768, 65536,
     ];
 
     {
+
         let groupname = format!("Search {}", std::any::type_name::<T>());
         let mut group = c.benchmark_group(groupname);
-        group.warm_up_time(WARM_UP_TIME).measurement_time(MEASUREMENT_TIME);
+        group.warm_up_time(WARM_UP_TIME).measurement_time(MEASUREMENT_TIME).plot_config(plot_config.clone());
 
         for i in sizes.iter() {
             search_bench_case::<MAX, T, _>(
@@ -73,7 +77,7 @@ where
     {
         let groupname = format!("Search (with duplicates) {}", std::any::type_name::<T>());
         let mut group = c.benchmark_group(groupname);
-        group.warm_up_time(WARM_UP_TIME).measurement_time(MEASUREMENT_TIME);
+        group.warm_up_time(WARM_UP_TIME).measurement_time(MEASUREMENT_TIME).plot_config(plot_config.clone());
 
         for i in sizes.iter() {
             search_bench_case::<MAX, T, _>(
@@ -107,7 +111,7 @@ where
     {
         let groupname = format!("Construction {}", std::any::type_name::<T>());
         let mut group = c.benchmark_group(groupname);
-        group.warm_up_time(WARM_UP_TIME).measurement_time(MEASUREMENT_TIME);
+        group.warm_up_time(WARM_UP_TIME).measurement_time(MEASUREMENT_TIME).plot_config(plot_config.clone());
 
         for i in sizes.iter() {
             construction_bench_case::<MAX, T, _>(
@@ -129,7 +133,7 @@ where
             std::any::type_name::<T>()
         );
         let mut group = c.benchmark_group(groupname);
-        group.warm_up_time(WARM_UP_TIME).measurement_time(MEASUREMENT_TIME);
+        group.warm_up_time(WARM_UP_TIME).measurement_time(MEASUREMENT_TIME).plot_config(plot_config);
 
         for i in sizes.iter() {
             construction_bench_case::<MAX, T, _>(
