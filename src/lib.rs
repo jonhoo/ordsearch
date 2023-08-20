@@ -108,13 +108,20 @@
 //!  - [ ] Implement deep prefetching for large `T`: https://github.com/patmorin/arraylayout/blob/3f20174a2a0ab52c6f37f2ea87d087307f19b5ee/src/eytzinger_array.h#L128
 //!
 #![deny(missing_docs)]
+#![no_std]
 #![cfg_attr(feature = "nightly", feature(test))]
 #![cfg_attr(feature = "nightly", feature(concat_idents))]
 #![cfg_attr(feature = "nightly", feature(core_intrinsics))]
 #[cfg(feature = "nightly")]
 extern crate test;
 
-use std::borrow::Borrow;
+#[cfg(test)]
+extern crate std;
+
+extern crate alloc;
+
+use alloc::vec::Vec;
+use core::borrow::Borrow;
 
 /// A collection of ordered items that can efficiently satisfy queries for nearby elements.
 ///
@@ -200,7 +207,7 @@ impl<T: Ord> OrderedCollection<T> {
     //
     // but, we don't actually *need* k. we only ever use 2^k. so, we can just use 64/sizeof(T)
     // directly! nice. we call this the multiplier (because it's what we'll multiply i by).
-    const MULTIPLIER: usize = 64 / std::mem::size_of::<T>();
+    const MULTIPLIER: usize = 64 / core::mem::size_of::<T>();
 
     // now for those additions we had to do above. well, we know that the offset is really just
     // 2^k - 1, and we know that multiplier == 2^k, so we're done. right?
@@ -380,6 +387,7 @@ fn prefetch_mask(n: usize) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alloc::vec;
 
     #[test]
     fn complete_exact() {
