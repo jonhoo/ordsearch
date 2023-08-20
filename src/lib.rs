@@ -480,7 +480,7 @@ mod b {
 
     #[inline]
     fn nodup_usize(i: usize) -> usize {
-        i * 2
+        i
     }
 
     #[inline]
@@ -646,7 +646,8 @@ mod b {
     macro_rules! bench_search {
         ($cache:expr, $make:ident, $search:ident, $mapper:ident, $b:ident) => {
             let size = black_box($cache.size());
-            let mut v: Vec<_> = (0..size).map(&$mapper).collect();
+            // Generating only even numbers as a payload to provide ~50% hit ratio in a benchmark
+            let mut v: Vec<_> = (0..size).map(|x| $mapper(x * 2)).collect();
             let mut r = 0usize;
 
             let c = $make(&mut v);
