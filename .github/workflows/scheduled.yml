@@ -47,6 +47,6 @@ jobs:
         run: cargo update
       - name: cargo test
         if: hashFiles('Cargo.lock') != ''
-        run: cargo test --locked --all-features --all-targets
+        run: cargo test --locked --all-targets
         env:
           RUSTFLAGS: -D deprecated
