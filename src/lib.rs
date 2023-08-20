@@ -512,6 +512,17 @@ mod b {
         ($t:ident, $v:ident) => {
             mod $v {
                 use super::*;
+
+                /// `dup()` and `nodup()` must be not inlined to make sure
+                /// we will have the same machine code for different sizes of a test payload
+                #[inline(never)]
+                fn dup(c: Cache, b: &mut Bencher) {
+                    let mk = concat_idents!(make_, $t);
+                    let mapper = concat_idents!(dup_, $v);
+                    bench_construction!(c, mk, mapper, b);
+                }
+
+                #[inline(never)]
                 fn nodup(c: Cache, b: &mut Bencher) {
                     let mk = concat_idents!(make_, $t);
                     let mapper = concat_idents!(nodup_, $v);
@@ -526,12 +537,6 @@ mod b {
                 #[bench]
                 fn l2(b: &mut Bencher) {
                     nodup(Cache::L2, b);
-                }
-
-                fn dup(c: Cache, b: &mut Bencher) {
-                    let mk = concat_idents!(make_, $t);
-                    let mapper = concat_idents!(dup_, $v);
-                    bench_construction!(c, mk, mapper, b);
                 }
 
                 #[bench]
@@ -624,7 +629,7 @@ mod b {
 
     macro_rules! bench_construction {
         ($cache:expr, $make:ident, $mapper:ident, $b:ident) => {
-            let size = $cache.size();
+            let size = black_box($cache.size());
             let mut v: Vec<_> = (0..size).map(&$mapper).collect();
             let mut r = 0usize;
 
@@ -640,7 +645,7 @@ mod b {
 
     macro_rules! bench_search {
         ($cache:expr, $make:ident, $search:ident, $mapper:ident, $b:ident) => {
-            let size = $cache.size();
+            let size = black_box($cache.size());
             let mut v: Vec<_> = (0..size).map(&$mapper).collect();
             let mut r = 0usize;
 
@@ -658,7 +663,7 @@ mod b {
 
     fn make_this<T: Ord + Copy>(v: &mut Vec<T>) -> OrderedCollection<T> {
         v.sort_unstable();
-        OrderedCollection::from_sorted_iter(v.into_iter().map(|x| *x))
+        OrderedCollection::from_sorted_iter(v.iter().copied())
     }
 
     fn search_this<T: Ord>(c: &OrderedCollection<T>, x: T) -> Option<&T> {
