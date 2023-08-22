@@ -172,7 +172,8 @@ fn search_bench_case<const MAX: usize, T, Coll>(
         } else {
             (0..*i)
                 .map(|int| {
-                    let int = std::cmp::min(int, MAX);
+                    // Generate only even numbers to provide a ~50% hit ratio in the benchmark
+                    let int = std::cmp::min(int * 2, MAX);
                     T::try_from(int).unwrap()
                 })
                 .collect()
