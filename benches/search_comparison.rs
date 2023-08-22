@@ -40,7 +40,6 @@ where
     ];
 
     {
-
         let groupname = format!("Search {}", std::any::type_name::<T>());
         let mut group = c.benchmark_group(groupname);
         group.warm_up_time(WARM_UP_TIME).measurement_time(MEASUREMENT_TIME).plot_config(plot_config.clone());
