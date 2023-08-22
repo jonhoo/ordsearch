@@ -183,7 +183,7 @@ fn search_bench_case<const MAX: usize, T, Coll>(
         b.iter(|| {
             r = r.wrapping_mul(1664525).wrapping_add(1013904223);
             let r = std::cmp::min(r, MAX);
-            let x = T::try_from(r % size).unwrap();
+            let x = black_box(T::try_from(r % size).unwrap());
             let _res = black_box(search_fun(&c, x));
         })
     });
