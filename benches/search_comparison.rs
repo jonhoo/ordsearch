@@ -166,7 +166,7 @@ fn search_bench_case<const MAX: usize, T, Coll>(
             (0..*i)
                 .map(|int| {
                     let int = std::cmp::min(int, MAX);
-                    T::try_from(int / 16 * 16).unwrap()
+                    T::try_from(int % 256).unwrap()
                 })
                 .collect()
         } else {
@@ -209,7 +209,7 @@ fn construction_bench_case<const MAX: usize, T, Coll>(
             (0..*i)
                 .map(|int| {
                     let int = std::cmp::min(int, MAX);
-                    T::try_from(int / 16 * 16).unwrap()
+                    T::try_from(int % 256).unwrap()
                 })
                 .collect()
         } else {
