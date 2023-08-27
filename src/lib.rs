@@ -359,7 +359,7 @@ impl<T: Ord> OrderedCollection<T> {
 #[inline(always)]
 fn do_prefetch<T>(addr: *const T) {
     unsafe {
-        std::intrinsics::prefetch_read_data(addr, 3);
+        core::intrinsics::prefetch_read_data(addr, 3);
     }
 }
 
