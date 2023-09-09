@@ -337,6 +337,8 @@ version = "0.2.4"
 dependencies = [
  "criterion",
  "num-traits",
+ "regex",
+ "serde",
 ]
 
 [[package]]
