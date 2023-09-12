@@ -177,9 +177,12 @@ where
     eytzinger_walk(v, iter, 2 * i + 1);
 
     // put data at the root
-    // we know the get_unchecked_mut and unwrap below are safe because we set the Vec's capacity to
+    // we know the pointer arithmetics below is safe because we set the Vec's capacity to
     // the length of the iterator.
-    *unsafe { v.get_unchecked_mut(i) } = iter.next().unwrap();
+    let value = iter.next().unwrap();
+    unsafe {
+        v.as_mut_ptr().add(i).write(value);
+    }
 
     // visit right child
     eytzinger_walk(v, iter, 2 * i + 2);
