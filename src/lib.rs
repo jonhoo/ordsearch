@@ -160,21 +160,25 @@ impl<T: Ord> From<Vec<T>> for OrderedCollection<T> {
     }
 }
 
-/// Insert items from the sorted iterator `iter` into `v` in complete binary tree order.
+/// Insert items from the sorted iterator `I` into `Vec<T>` in complete binary tree order.
 ///
-/// Requires `iter` to be a sorted iterator.
-/// Requires v's capacity to be set to the number of elements in `iter`.
-/// The length of `v` will not be changed by this function.
-fn eytzinger_walk<I, T>(v: &mut Vec<T>, iter: &mut I, i: usize)
+/// Requires `I` to be a sorted iterator.
+/// Requires `Vec<T>` capacity to be set to the number of elements in `iter`.
+/// The length of `Vec<T>` will not be changed by this function.
+fn eytzinger_walk<I, T>(context: &mut (Vec<T>, I), i: usize)
 where
     I: Iterator<Item = T>,
 {
+    let (v, _) = context;
     if i >= v.capacity() {
         return;
     }
 
     // visit left child
-    eytzinger_walk(v, iter, 2 * i + 1);
+    eytzinger_walk(context, 2 * i + 1);
+
+    // reborrow context
+    let (v, iter) = context;
 
     // put data at the root
     // we know the pointer arithmetics below is safe because we set the Vec's capacity to
@@ -185,7 +189,7 @@ where
     }
 
     // visit right child
-    eytzinger_walk(v, iter, 2 * i + 2);
+    eytzinger_walk(context, 2 * i + 2);
 }
 
 impl<T: Ord> OrderedCollection<T> {
@@ -281,10 +285,11 @@ impl<T: Ord> OrderedCollection<T> {
         I: IntoIterator<Item = T>,
         I::IntoIter: ExactSizeIterator<Item = T>,
     {
-        let mut iter = iter.into_iter();
+        let iter = iter.into_iter();
         let n = iter.len();
-        let mut v = Vec::with_capacity(n);
-        eytzinger_walk(&mut v, &mut iter, 0);
+        let mut context = (Vec::with_capacity(n), iter);
+        eytzinger_walk(&mut context, 0);
+        let (mut v, _) = context;
 
         // it's now safe to set the length, since all `n` elements have been inserted.
         unsafe { v.set_len(n) };
