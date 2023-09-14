@@ -304,7 +304,7 @@ impl<T: Ord> OrderedCollection<T> {
     /// let a = OrderedCollection::from_slice(&mut vals);
     /// assert_eq!(a.find_gte(50), Some(&&89));
     /// ```
-    pub fn from_slice<'a>(v: &'a mut [T]) -> OrderedCollection<&'a T> {
+    pub fn from_slice(v: &mut [T]) -> OrderedCollection<&T> {
         v.sort_unstable();
         OrderedCollection::from_sorted_iter(v.iter_mut().map(|x| &*x))
     }
@@ -326,7 +326,7 @@ impl<T: Ord> OrderedCollection<T> {
     /// assert_eq!(x.find_gte(64), Some(&64));
     /// assert_eq!(x.find_gte(65), None);
     /// ```
-    pub fn find_gte<'a, X>(&'a self, x: X) -> Option<&'a T>
+    pub fn find_gte<X>(&self, x: X) -> Option<&T>
     where
         T: Borrow<X>,
         X: Ord,
