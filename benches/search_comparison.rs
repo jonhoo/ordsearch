@@ -151,10 +151,10 @@ where
                 make_sorted_vec,
                 &mut group,
                 i,
-                false,
+                true,
             );
-            construction_bench_case::<MAX, T, _>("btreeset", make_btreeset, &mut group, i, false);
-            construction_bench_case::<MAX, T, _>("ordsearch", make_this, &mut group, i, false);
+            construction_bench_case::<MAX, T, _>("btreeset", make_btreeset, &mut group, i, true);
+            construction_bench_case::<MAX, T, _>("ordsearch", make_this, &mut group, i, true);
         }
         group.finish();
     }
@@ -168,27 +168,12 @@ fn search_bench_case<const MAX: usize, T, Coll>(
     i: &usize,
     duplicates: bool,
 ) where
-    T: TryFrom<usize> + Ord + std::ops::Rem<Output = T> + num_traits::ops::wrapping::WrappingMul,
+    T: TryFrom<usize> + Ord,
     <T as TryFrom<usize>>::Error: core::fmt::Debug,
 {
     group.bench_with_input(BenchmarkId::new(name, i), i, |b, i| {
         let size = *i;
-        let v: Vec<T> = if duplicates {
-            (0..*i)
-                .map(|int| {
-                    let int = std::cmp::min(int, MAX);
-                    T::try_from(int % 256).unwrap()
-                })
-                .collect()
-        } else {
-            (0..*i)
-                .map(|int| {
-                    // Generate only even numbers to provide a ~50% hit ratio in the benchmark
-                    let int = std::cmp::min(int * 2, MAX);
-                    T::try_from(int).unwrap()
-                })
-                .collect()
-        };
+        let v: Vec<T> = test_sequence(duplicates, MAX).take(size).collect();
         let mut r = 0usize;
         let c = setup_fun(v);
         b.iter(|| {
@@ -207,45 +192,15 @@ fn construction_bench_case<const MAX: usize, T, Coll>(
     i: &usize,
     duplicates: bool,
 ) where
-    T: TryFrom<usize>
-        + Ord
-        + std::ops::Rem<Output = T>
-        + num_traits::ops::wrapping::WrappingMul
-        + Clone,
+    T: TryFrom<usize> + Ord + Clone,
     <T as TryFrom<usize>>::Error: core::fmt::Debug,
 {
     group.bench_with_input(BenchmarkId::new(name, i), i, |b, i| {
         let size = *i;
-        let mut v: Vec<T> = if duplicates {
-            (0..*i)
-                .map(|int| {
-                    let int = std::cmp::min(int, MAX);
-                    T::try_from(int % 256).unwrap()
-                })
-                .collect()
-        } else {
-            (0..*i)
-                .map(|int| {
-                    let int = std::cmp::min(int, MAX);
-                    T::try_from(int).unwrap()
-                })
-                .collect()
-        };
-        let mut r = 0usize;
-        for e in v.iter_mut() {
-            r = r.wrapping_mul(1664525).wrapping_add(1013904223);
-            if duplicates {
-                let r = (r % size) / 256;
-                let r = r % MAX;
-                *e = T::try_from(r).unwrap();
-            } else {
-                let r = (r % size) * 2;
-                let r = std::cmp::min(r, MAX);
-                *e = T::try_from(r).unwrap();
-            }
-        }
+        let v: Vec<T> = pseudorandom_iter(size, 0, duplicates, MAX)
+            .take(size)
+            .collect();
 
-        {}
         b.iter_batched(
             || v.clone(),
             |v| {
@@ -284,4 +239,64 @@ fn make_sorted_vec<T: Ord>(mut v: Vec<T>) -> Vec<T> {
 
 fn search_sorted_vec<'a, T: Ord>(c: &'a Vec<T>, x: T) -> Option<&'a T> {
     c.binary_search(&x).ok().map(|i| &c[i])
+}
+
+fn test_sequence<T>(duplicates: bool, max: usize) -> impl Iterator<Item = T>
+where
+    T: TryFrom<usize>,
+    <T as TryFrom<usize>>::Error: core::fmt::Debug,
+{
+    let mut index = 0;
+    std::iter::from_fn(move || {
+        if duplicates {
+            let item = std::cmp::min(index, max);
+            let item = item % 256;
+            Some(T::try_from(item).unwrap())
+        } else {
+            let item = std::cmp::min(index * 2, max);
+            Some(T::try_from(item).unwrap())
+        }
+    })
+}
+
+/// Generate pseudorandom sequence of numbers
+///
+/// Without duplicates:
+/// ```rust
+/// assert_eq!(
+///     pseudorandom_iter::<u8>(16, 0, false, u8::MAX).take(16).collect(),
+///     vec![30, 4, 18, 8, 6, 12, 26, 16, 14, 20, 2, 24, 22, 28, 10, 0]
+/// )
+/// ```
+///
+/// With duplicates:
+/// ```rust
+/// assert_eq!(
+///     pseudorandom_iter::<u32>(16, 0, true, u32::MAX).take(16).collect(),
+///     vec![15, 14, 9, 8, 5, 10, 0, 4, 5, 0, 4, 6, 5, 14, 12, 2]
+/// );
+/// ```
+fn pseudorandom_iter<T>(
+    size: usize,
+    mut seed: usize,
+    duplicates: bool,
+    max: usize,
+) -> impl Iterator<Item = T>
+where
+    T: TryFrom<usize>,
+    <T as TryFrom<usize>>::Error: core::fmt::Debug,
+{
+    std::iter::from_fn(move || {
+        // LCG constants from https://en.wikipedia.org/wiki/Numerical_Recipes.
+        seed = seed.wrapping_mul(1664525).wrapping_add(1013904223);
+
+        if duplicates {
+            let r = (seed % 256) / size;
+            Some(T::try_from(r).unwrap())
+        } else {
+            let r = (seed % size) * 2;
+            let r = r % max;
+            Some(T::try_from(r).unwrap())
+        }
+    })
 }
