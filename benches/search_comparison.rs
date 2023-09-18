@@ -168,7 +168,7 @@ fn search_bench_case<const MAX: usize, T, Coll>(
     size: &usize,
     duplicates: bool,
 ) where
-    T: TryFrom<usize> + Ord + Clone + core::fmt::Debug + std::ops::Rem<T, Output=T>,
+    T: TryFrom<usize> + Ord + Clone,
     <T as TryFrom<usize>>::Error: core::fmt::Debug,
 {
     group.bench_with_input(BenchmarkId::new(name, size), size, |b, &size| {
