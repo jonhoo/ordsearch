@@ -208,12 +208,12 @@ fn construction_bench_case<const MAX: usize, T, Coll>(
 {
     group.bench_with_input(BenchmarkId::new(name, size), size, |b, &size| {
         let v: Vec<T> = if duplicates {
-            pseudorandom_iter(0, MAX, None)
+            pseudorandom_iter(0, MAX + 1, None)
                 .flat_map(|i| std::iter::repeat(i).take(16))
                 .take(size)
                 .collect()
         } else {
-            pseudorandom_iter(0, MAX, None).take(size).collect()
+            pseudorandom_iter(0, MAX + 1, None).take(size).collect()
         };
 
         b.iter_batched(
