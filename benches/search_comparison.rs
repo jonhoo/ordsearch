@@ -235,7 +235,9 @@ fn construction_bench_case<const MAX: usize, T, Coll>(
         for e in v.iter_mut() {
             r = r.wrapping_mul(1664525).wrapping_add(1013904223);
             if duplicates {
-                *e = T::try_from(r % 256).unwrap();
+                let r = (r % size) / 256;
+                let r = r % MAX;
+                *e = T::try_from(r).unwrap();
             } else {
                 let r = (r % size) * 2;
                 let r = std::cmp::min(r, MAX);
