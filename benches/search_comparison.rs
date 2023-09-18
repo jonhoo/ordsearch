@@ -248,14 +248,15 @@ where
 {
     let mut index = 0;
     std::iter::from_fn(move || {
-        if duplicates {
+        let item = if duplicates {
             let item = std::cmp::min(index, max);
-            let item = item % 256;
-            Some(T::try_from(item).unwrap())
+            item % 256
         } else {
-            let item = std::cmp::min(index * 2, max);
-            Some(T::try_from(item).unwrap())
-        }
+            std::cmp::min(index * 2, max)
+        };
+        index += 1;
+
+        Some(T::try_from(item).unwrap())
     })
 }
 
