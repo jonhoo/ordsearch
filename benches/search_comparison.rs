@@ -256,8 +256,6 @@ fn search_sorted_vec<'a, T: Ord>(c: &'a Vec<T>, x: T) -> Option<&'a T> {
     c.binary_search(&x).ok().map(|i| &c[i])
 }
 
-
-
 /// Generate pseudorandom sequence of numbers
 ///
 /// ```rust
@@ -282,7 +280,11 @@ fn search_sorted_vec<'a, T: Ord>(c: &'a Vec<T>, x: T) -> Option<&'a T> {
 ///     pseudorandom_iter::<u8>(0, u8::MAX, Some(32)).take(16).collect(),
 ///     vec![27 9 5 20 18 15 5 24 15 8 1 6 7 15 29 17]
 /// );
-fn pseudorandom_iter<T>(mut seed: usize, max: usize, bound: Option<usize>) -> impl Iterator<Item = T>
+fn pseudorandom_iter<T>(
+    mut seed: usize,
+    max: usize,
+    bound: Option<usize>,
+) -> impl Iterator<Item = T>
 where
     T: TryFrom<usize>,
     <T as TryFrom<usize>>::Error: core::fmt::Debug,
@@ -291,9 +293,12 @@ where
         // LCG constants from https://en.wikipedia.org/wiki/Numerical_Recipes.
         seed = seed.wrapping_mul(1664525).wrapping_add(1013904223);
         let r = (seed.wrapping_mul(2)) % max;
-        let r = if let Some(bound) = bound { r % bound } else { r };
+        let r = if let Some(bound) = bound {
+            r % bound
+        } else {
+            r
+        };
 
         Some(black_box(T::try_from(r).unwrap()))
     })
 }
-
