@@ -270,7 +270,7 @@ fn search_sorted_vec<'a, T: Ord>(c: &'a Vec<T>, x: T) -> Option<&'a T> {
 ///
 /// ```rust
 /// assert_eq!(
-///     pseudorandom_iter::<u32>(0, u8::MAX + 1, None).take(16).collect(),
+///     pseudorandom_iter::<u8>(0, u8::MAX + 1, None).take(16).collect(),
 ///     vec![190, 100, 210, 104, 6, 12, 90, 80, 206, 52, 98, 184, 22, 220, 234, 160]
 /// );
 /// ```
@@ -278,7 +278,7 @@ fn search_sorted_vec<'a, T: Ord>(c: &'a Vec<T>, x: T) -> Option<&'a T> {
 /// ```rust
 /// assert_eq!(
 ///     pseudorandom_iter::<u8>(0, u8::MAX, Some(32)).take(16).collect(),
-///     vec![27 9 5 20 18 15 5 24 15 8 1 6 7 15 29 17]
+///     vec![27, 9, 5, 20, 18, 15, 5, 24, 15, 8, 1, 6, 7, 15, 29, 17]
 /// );
 fn pseudorandom_iter<T>(
     mut seed: usize,
