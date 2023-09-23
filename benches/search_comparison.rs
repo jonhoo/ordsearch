@@ -208,12 +208,12 @@ fn construction_bench_case<const MAX: usize, T, Coll>(
 {
     group.bench_with_input(BenchmarkId::new(name, size), size, |b, &size| {
         let v: Vec<T> = if duplicates {
-            pseudorandom_iter(0, MAX + 1, None)
+            pseudorandom_iter(0, MAX, None)
                 .flat_map(|i| std::iter::repeat(i).take(16))
                 .take(size)
                 .collect()
         } else {
-            pseudorandom_iter(0, MAX + 1, None).take(size).collect()
+            pseudorandom_iter(0, MAX, None).take(size).collect()
         };
 
         b.iter_batched(
@@ -260,18 +260,18 @@ fn search_sorted_vec<'a, T: Ord>(c: &'a Vec<T>, x: T) -> Option<&'a T> {
 ///
 /// ```rust
 /// assert_eq!(
-///     pseudorandom_iter::<u32>(0, u32::MAX + 1, None).take(16).collect(),
-///     vec![2027808446, 2392871524, 2744774098, 1441965672, 3299199494, 1046318348,
-///         2952583258, 1202896720, 66813390, 702635572, 2548852578, 2040672952,
-///         977783318, 3308121564, 57975530, 126707872]
+///     pseudorandom_iter::<u32>(0, u32::MAX , None).take(16).collect(),
+///     vec![2027808446, 2393657406, 900912232, 833811770, 1061328792, 93432844,
+///     2565420364, 1550801266, 1147887774, 710446582, 3306204668, 500014398,
+///     1140212266, 2163551532, 513205252, 1774545590]
 ///
 /// )
 /// ```
 ///
 /// ```rust
 /// assert_eq!(
-///     pseudorandom_iter::<u8>(0, u8::MAX + 1, None).take(16).collect(),
-///     vec![190, 100, 210, 104, 6, 12, 90, 80, 206, 52, 98, 184, 22, 220, 234, 160]
+///     pseudorandom_iter::<u8>(0, u8::MAX, None).take(16).collect(),
+///     vec![250, 200, 36, 20, 178, 78, 4, 152, 174, 8, 128, 198, 166, 206, 156, 80]
 /// );
 /// ```
 ///
@@ -296,7 +296,7 @@ where
         let r = if let Some(bound) = bound {
             r % bound
         } else {
-            r
+            r - r % 2
         };
 
         Some(black_box(T::try_from(r).unwrap()))
