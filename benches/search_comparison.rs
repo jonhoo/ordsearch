@@ -258,11 +258,7 @@ fn search_sorted_vec<'a, T: Ord>(c: &'a Vec<T>, x: T) -> Option<&'a T> {
     c.binary_search(&x).ok().map(|i| &c[i])
 }
 
-
-fn pseudorandom_iter<T>(
-    mut seed: usize,
-    max: usize,
-) -> impl Iterator<Item = T>
+fn pseudorandom_iter<T>(mut seed: usize, max: usize) -> impl Iterator<Item = T>
 where
     T: TryFrom<usize>,
     <T as TryFrom<usize>>::Error: core::fmt::Debug,
