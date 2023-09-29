@@ -11,6 +11,7 @@ use std::{collections::BTreeSet, convert::TryFrom, time::Duration};
 
 const WARM_UP_TIME: Duration = Duration::from_millis(500);
 const MEASUREMENT_TIME: Duration = Duration::from_millis(1000);
+const DUPLICATION_FACTOR: usize = 16;
 
 criterion_main!(benches);
 
@@ -174,20 +175,21 @@ fn search_bench_case<const MAX: usize, T, Coll>(
     group.bench_with_input(BenchmarkId::new(name, size), size, |b, &size| {
         // increasing sequence of even numbers, bounded by MAX
         let iter = (0usize..)
-            .map(|i| std::cmp::min(i * 2, MAX))
+            // Generate only even numbers to provide a ~50% hit ratio in the benchmark
+            .map(|i| (i * 2) % MAX)
             .map(|i| T::try_from(i).unwrap());
 
         let v: Vec<T> = if duplicates {
             iter
                 // Repeat each items 16 times
-                .flat_map(|i| std::iter::repeat(i).take(16))
+                .flat_map(|i| std::iter::repeat(i).take(DUPLICATION_FACTOR))
                 .take(size)
                 .collect()
         } else {
             iter.take(size).collect()
         };
 
-        let mut r = pseudorandom_iter::<T>(0, MAX, Some(size));
+        let mut r = pseudorandom_iter::<T>(0, (size * 2) % MAX);
         let c = setup_fun(v);
         b.iter(|| {
             let x = r.next().unwrap();
@@ -208,12 +210,12 @@ fn construction_bench_case<const MAX: usize, T, Coll>(
 {
     group.bench_with_input(BenchmarkId::new(name, size), size, |b, &size| {
         let v: Vec<T> = if duplicates {
-            pseudorandom_iter(0, MAX, None)
-                .flat_map(|i| std::iter::repeat(i).take(16))
+            pseudorandom_iter(0, MAX)
+                .flat_map(|i| std::iter::repeat(i).take(DUPLICATION_FACTOR))
                 .take(size)
                 .collect()
         } else {
-            pseudorandom_iter(0, MAX, None).take(size).collect()
+            pseudorandom_iter(0, MAX).take(size).collect()
         };
 
         b.iter_batched(
@@ -256,34 +258,10 @@ fn search_sorted_vec<'a, T: Ord>(c: &'a Vec<T>, x: T) -> Option<&'a T> {
     c.binary_search(&x).ok().map(|i| &c[i])
 }
 
-/// Generate pseudorandom sequence of numbers
-///
-/// ```rust
-/// assert_eq!(
-///     pseudorandom_iter::<u32>(0, u32::MAX , None).take(16).collect(),
-///     vec![2027808446, 2393657406, 900912232, 833811770, 1061328792, 93432844,
-///     2565420364, 1550801266, 1147887774, 710446582, 3306204668, 500014398,
-///     1140212266, 2163551532, 513205252, 1774545590]
-///
-/// )
-/// ```
-///
-/// ```rust
-/// assert_eq!(
-///     pseudorandom_iter::<u8>(0, u8::MAX, None).take(16).collect(),
-///     vec![250, 200, 36, 20, 178, 78, 4, 152, 174, 8, 128, 198, 166, 206, 156, 80]
-/// );
-/// ```
-///
-/// ```rust
-/// assert_eq!(
-///     pseudorandom_iter::<u8>(0, u8::MAX, Some(32)).take(16).collect(),
-///     vec![27, 9, 5, 20, 18, 15, 5, 24, 15, 8, 1, 6, 7, 15, 29, 17]
-/// );
+
 fn pseudorandom_iter<T>(
     mut seed: usize,
     max: usize,
-    bound: Option<usize>,
 ) -> impl Iterator<Item = T>
 where
     T: TryFrom<usize>,
@@ -292,12 +270,7 @@ where
     std::iter::from_fn(move || {
         // LCG constants from https://en.wikipedia.org/wiki/Numerical_Recipes.
         seed = seed.wrapping_mul(1664525).wrapping_add(1013904223);
-        let r = (seed.wrapping_mul(2)) % max;
-        let r = if let Some(bound) = bound {
-            r % bound
-        } else {
-            r - r % 2
-        };
+        let r = seed % max;
 
         Some(black_box(T::try_from(r).unwrap()))
     })
