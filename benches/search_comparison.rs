@@ -189,7 +189,7 @@ fn search_bench_case<const MAX: usize, T, Coll>(
             iter.take(size).collect()
         };
 
-        let mut r = pseudorandom_iter::<T>(0, (size * 2) % MAX);
+        let mut r = pseudorandom_iter::<T>((size * 2) % MAX);
         let c = setup_fun(v);
         b.iter(|| {
             let x = r.next().unwrap();
@@ -210,12 +210,12 @@ fn construction_bench_case<const MAX: usize, T, Coll>(
 {
     group.bench_with_input(BenchmarkId::new(name, size), size, |b, &size| {
         let v: Vec<T> = if duplicates {
-            pseudorandom_iter(0, MAX)
+            pseudorandom_iter(MAX)
                 .flat_map(|i| std::iter::repeat(i).take(DUPLICATION_FACTOR))
                 .take(size)
                 .collect()
         } else {
-            pseudorandom_iter(0, MAX).take(size).collect()
+            pseudorandom_iter(MAX).take(size).collect()
         };
 
         b.iter_batched(
@@ -258,16 +258,17 @@ fn search_sorted_vec<'a, T: Ord>(c: &'a Vec<T>, x: T) -> Option<&'a T> {
     c.binary_search(&x).ok().map(|i| &c[i])
 }
 
-fn pseudorandom_iter<T>(mut seed: usize, max: usize) -> impl Iterator<Item = T>
+fn pseudorandom_iter<T>(max: usize) -> impl Iterator<Item = T>
 where
     T: TryFrom<usize>,
     <T as TryFrom<usize>>::Error: core::fmt::Debug,
 {
+    let mut seed = 0usize;
     std::iter::from_fn(move || {
         // LCG constants from https://en.wikipedia.org/wiki/Numerical_Recipes.
         seed = seed.wrapping_mul(1664525).wrapping_add(1013904223);
         let r = seed % max;
 
-        Some(black_box(T::try_from(r).unwrap()))
+        Some(T::try_from(r).unwrap())
     })
 }
