@@ -67,7 +67,7 @@ where
             );
             search_bench_case::<MAX, T, _>(
                 "ordsearch",
-                OrderedCollection::from_sorted_iter,
+                make_this,
                 search_this,
                 &mut group,
                 i,
@@ -104,7 +104,7 @@ where
             );
             search_bench_case::<MAX, T, _>(
                 "ordsearch",
-                OrderedCollection::from_sorted_iter,
+                make_this,
                 search_this,
                 &mut group,
                 i,
@@ -131,13 +131,7 @@ where
                 false,
             );
             construction_bench_case::<MAX, T, _>("btreeset", make_btreeset, &mut group, i, false);
-            construction_bench_case::<MAX, T, _>(
-                "ordsearch",
-                OrderedCollection::from_sorted_iter,
-                &mut group,
-                i,
-                false,
-            );
+            construction_bench_case::<MAX, T, _>("ordsearch", make_this, &mut group, i, false);
         }
         group.finish();
     }
@@ -162,13 +156,7 @@ where
                 true,
             );
             construction_bench_case::<MAX, T, _>("btreeset", make_btreeset, &mut group, i, true);
-            construction_bench_case::<MAX, T, _>(
-                "ordsearch",
-                OrderedCollection::from_sorted_iter,
-                &mut group,
-                i,
-                true,
-            );
+            construction_bench_case::<MAX, T, _>("ordsearch", make_this, &mut group, i, true);
         }
         group.finish();
     }
@@ -239,6 +227,11 @@ fn construction_bench_case<const MAX: usize, T, Coll>(
             criterion::BatchSize::SmallInput,
         );
     });
+}
+
+fn make_this<T: Ord>(mut v: Vec<T>) -> OrderedCollection<T> {
+    v.sort_unstable();
+    OrderedCollection::from_sorted_iter(v.into_iter())
 }
 
 fn search_this<T: Ord>(c: &OrderedCollection<T>, x: T) -> Option<&T> {
