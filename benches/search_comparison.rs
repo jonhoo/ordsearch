@@ -7,6 +7,7 @@ use criterion::{
     BenchmarkId, Criterion, PlotConfiguration,
 };
 use ordsearch::OrderedCollection;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::{collections::BTreeSet, convert::TryFrom, time::Duration};
 
 const WARM_UP_TIME: Duration = Duration::from_millis(500);
@@ -189,7 +190,7 @@ fn search_bench_case<const MAX: usize, T, Coll>(
             iter.take(size).collect()
         };
 
-        let mut r = pseudorandom_iter::<T>((size * 2) % MAX);
+        let mut r = pseudorandom_iter::<T>(std::cmp::min(size * 2, MAX));
         let c = setup_fun(v);
         b.iter(|| {
             let x = r.next().unwrap();
@@ -263,7 +264,13 @@ where
     T: TryFrom<usize>,
     <T as TryFrom<usize>>::Error: core::fmt::Debug,
 {
-    let mut seed = 0usize;
+    static SEED: AtomicUsize = AtomicUsize::new(0);
+    let mut seed = SEED
+        .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |value| {
+            Some(value.wrapping_mul(1664525).wrapping_add(1013904223))
+        })
+        .expect("Never returns None");
+
     std::iter::from_fn(move || {
         // LCG constants from https://en.wikipedia.org/wiki/Numerical_Recipes.
         seed = seed.wrapping_mul(1664525).wrapping_add(1013904223);
