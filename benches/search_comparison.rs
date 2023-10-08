@@ -265,11 +265,7 @@ where
     <T as TryFrom<usize>>::Error: core::fmt::Debug,
 {
     static SEED: AtomicUsize = AtomicUsize::new(0);
-    let mut seed = SEED
-        .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |value| {
-            Some(value.wrapping_mul(1664525).wrapping_add(1013904223))
-        })
-        .expect("Never returns None");
+    let mut seed = SEED.fetch_add(1, Ordering::SeqCst);
 
     std::iter::from_fn(move || {
         // LCG constants from https://en.wikipedia.org/wiki/Numerical_Recipes.
