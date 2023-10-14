@@ -7,10 +7,12 @@ use criterion::{
     BenchmarkId, Criterion, PlotConfiguration,
 };
 use ordsearch::OrderedCollection;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::{collections::BTreeSet, convert::TryFrom, time::Duration};
 
 const WARM_UP_TIME: Duration = Duration::from_millis(500);
 const MEASUREMENT_TIME: Duration = Duration::from_millis(1000);
+const DUPLICATION_FACTOR: usize = 16;
 
 criterion_main!(benches);
 
@@ -151,10 +153,10 @@ where
                 make_sorted_vec,
                 &mut group,
                 i,
-                false,
+                true,
             );
-            construction_bench_case::<MAX, T, _>("btreeset", make_btreeset, &mut group, i, false);
-            construction_bench_case::<MAX, T, _>("ordsearch", make_this, &mut group, i, false);
+            construction_bench_case::<MAX, T, _>("btreeset", make_btreeset, &mut group, i, true);
+            construction_bench_case::<MAX, T, _>("ordsearch", make_this, &mut group, i, true);
         }
         group.finish();
     }
@@ -165,36 +167,33 @@ fn search_bench_case<const MAX: usize, T, Coll>(
     setup_fun: impl Fn(Vec<T>) -> Coll,
     search_fun: impl Fn(&Coll, T) -> Option<&T>,
     group: &mut BenchmarkGroup<WallTime>,
-    i: &usize,
+    size: &usize,
     duplicates: bool,
 ) where
-    T: TryFrom<usize> + Ord + std::ops::Rem<Output = T> + num_traits::ops::wrapping::WrappingMul,
+    T: TryFrom<usize> + Ord + Clone,
     <T as TryFrom<usize>>::Error: core::fmt::Debug,
 {
-    group.bench_with_input(BenchmarkId::new(name, i), i, |b, i| {
-        let size = *i;
+    group.bench_with_input(BenchmarkId::new(name, size), size, |b, &size| {
+        // increasing sequence of even numbers, bounded by MAX
+        let iter = (0usize..)
+            // Generate only even numbers to provide a ~50% hit ratio in the benchmark
+            .map(|i| (i * 2) % MAX)
+            .map(|i| T::try_from(i).unwrap());
+
         let v: Vec<T> = if duplicates {
-            (0..*i)
-                .map(|int| {
-                    let int = std::cmp::min(int, MAX);
-                    T::try_from(int % 256).unwrap()
-                })
+            iter
+                // Repeat each items 16 times
+                .flat_map(|i| std::iter::repeat(i).take(DUPLICATION_FACTOR))
+                .take(size)
                 .collect()
         } else {
-            (0..*i)
-                .map(|int| {
-                    // Generate only even numbers to provide a ~50% hit ratio in the benchmark
-                    let int = std::cmp::min(int * 2, MAX);
-                    T::try_from(int).unwrap()
-                })
-                .collect()
+            iter.take(size).collect()
         };
-        let mut r = 0usize;
+
+        let mut r = pseudorandom_iter::<T>(std::cmp::min(size * 2, MAX));
         let c = setup_fun(v);
         b.iter(|| {
-            r = r.wrapping_mul(1664525).wrapping_add(1013904223);
-            let r = std::cmp::min(r, MAX);
-            let x = black_box(T::try_from(r % size).unwrap());
+            let x = r.next().unwrap();
             let _res = black_box(search_fun(&c, x));
         })
     });
@@ -204,48 +203,22 @@ fn construction_bench_case<const MAX: usize, T, Coll>(
     name: &str,
     setup_fun: impl Fn(Vec<T>) -> Coll,
     group: &mut BenchmarkGroup<WallTime>,
-    i: &usize,
+    size: &usize,
     duplicates: bool,
 ) where
-    T: TryFrom<usize>
-        + Ord
-        + std::ops::Rem<Output = T>
-        + num_traits::ops::wrapping::WrappingMul
-        + Clone,
+    T: TryFrom<usize> + Ord + Clone,
     <T as TryFrom<usize>>::Error: core::fmt::Debug,
 {
-    group.bench_with_input(BenchmarkId::new(name, i), i, |b, i| {
-        let size = *i;
-        let mut v: Vec<T> = if duplicates {
-            (0..*i)
-                .map(|int| {
-                    let int = std::cmp::min(int, MAX);
-                    T::try_from(int % 256).unwrap()
-                })
+    group.bench_with_input(BenchmarkId::new(name, size), size, |b, &size| {
+        let v: Vec<T> = if duplicates {
+            pseudorandom_iter(MAX)
+                .flat_map(|i| std::iter::repeat(i).take(DUPLICATION_FACTOR))
+                .take(size)
                 .collect()
         } else {
-            (0..*i)
-                .map(|int| {
-                    let int = std::cmp::min(int, MAX);
-                    T::try_from(int).unwrap()
-                })
-                .collect()
+            pseudorandom_iter(MAX).take(size).collect()
         };
-        let mut r = 0usize;
-        for e in v.iter_mut() {
-            r = r.wrapping_mul(1664525).wrapping_add(1013904223);
-            if duplicates {
-                let r = (r % size) / 16 * 16;
-                let r = std::cmp::min(r, MAX);
-                *e = T::try_from(r).unwrap();
-            } else {
-                let r = (r % size) * 2;
-                let r = std::cmp::min(r, MAX);
-                *e = T::try_from(r).unwrap();
-            }
-        }
 
-        {}
         b.iter_batched(
             || v.clone(),
             |v| {
@@ -284,4 +257,21 @@ fn make_sorted_vec<T: Ord>(mut v: Vec<T>) -> Vec<T> {
 
 fn search_sorted_vec<'a, T: Ord>(c: &'a Vec<T>, x: T) -> Option<&'a T> {
     c.binary_search(&x).ok().map(|i| &c[i])
+}
+
+fn pseudorandom_iter<T>(max: usize) -> impl Iterator<Item = T>
+where
+    T: TryFrom<usize>,
+    <T as TryFrom<usize>>::Error: core::fmt::Debug,
+{
+    static SEED: AtomicUsize = AtomicUsize::new(0);
+    let mut seed = SEED.fetch_add(1, Ordering::SeqCst);
+
+    std::iter::from_fn(move || {
+        // LCG constants from https://en.wikipedia.org/wiki/Numerical_Recipes.
+        seed = seed.wrapping_mul(1664525).wrapping_add(1013904223);
+        let r = seed % max;
+
+        Some(T::try_from(r).unwrap())
+    })
 }
