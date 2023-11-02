@@ -270,7 +270,7 @@ where
     std::iter::from_fn(move || {
         // LCG constants from https://en.wikipedia.org/wiki/Numerical_Recipes.
         seed = seed.wrapping_mul(1664525).wrapping_add(1013904223);
-        let r = seed % max;
+        let r = (seed >> 32) % max;
 
         Some(T::try_from(r).unwrap())
     })
