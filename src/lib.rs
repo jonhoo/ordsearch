@@ -112,13 +112,12 @@
 #![cfg_attr(feature = "nightly", feature(test))]
 #![cfg_attr(feature = "nightly", feature(concat_idents))]
 #![cfg_attr(feature = "nightly", feature(core_intrinsics))]
-#[cfg(feature = "nightly")]
-extern crate test;
-
-#[cfg(test)]
-extern crate std;
 
 extern crate alloc;
+#[cfg(test)]
+extern crate std;
+#[cfg(feature = "nightly")]
+extern crate test;
 
 use alloc::vec::Vec;
 use core::borrow::Borrow;
@@ -156,7 +155,7 @@ impl<T: Ord> From<Vec<T>> for OrderedCollection<T> {
     /// ```
     fn from(mut v: Vec<T>) -> OrderedCollection<T> {
         v.sort_unstable();
-        Self::from_sorted_iter(v.into_iter())
+        Self::from_sorted_iter(v)
     }
 }
 
@@ -289,12 +288,12 @@ impl<T: Ord> OrderedCollection<T> {
         let n = iter.len();
         let mut context = (Vec::with_capacity(n), iter);
         eytzinger_walk(&mut context, 0);
-        let (mut v, _) = context;
+        let (mut items, _) = context;
 
         // it's now safe to set the length, since all `n` elements have been inserted.
-        unsafe { v.set_len(n) };
+        unsafe { items.set_len(n) };
 
-        OrderedCollection { items: v }
+        OrderedCollection { items }
     }
 
     /// Construct a new `OrderedCollection` from a slice of elements.
@@ -311,7 +310,7 @@ impl<T: Ord> OrderedCollection<T> {
     /// ```
     pub fn from_slice(v: &mut [T]) -> OrderedCollection<&T> {
         v.sort_unstable();
-        OrderedCollection::from_sorted_iter(v.iter_mut().map(|x| &*x))
+        OrderedCollection::from_sorted_iter(v.iter())
     }
 
     /// Find the smallest value `v` such that `v >= x`.
