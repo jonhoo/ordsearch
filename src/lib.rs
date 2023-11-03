@@ -109,15 +109,12 @@
 //!
 #![deny(missing_docs)]
 #![no_std]
-#![cfg_attr(feature = "nightly", feature(test))]
 #![cfg_attr(feature = "nightly", feature(concat_idents))]
 #![cfg_attr(feature = "nightly", feature(core_intrinsics))]
 
 extern crate alloc;
 #[cfg(test)]
 extern crate std;
-#[cfg(feature = "nightly")]
-extern crate test;
 
 use alloc::vec::Vec;
 use core::borrow::Borrow;
