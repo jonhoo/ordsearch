@@ -3,12 +3,18 @@ extern crate num_traits;
 extern crate ordsearch;
 
 use criterion::{
-    black_box, criterion_group, criterion_main, measurement::WallTime, AxisScale, BenchmarkGroup,
+    criterion_group, criterion_main, measurement::WallTime, AxisScale, BatchSize, BenchmarkGroup,
     BenchmarkId, Criterion, PlotConfiguration,
 };
 use ordsearch::OrderedCollection;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::{collections::BTreeSet, convert::TryFrom, time::Duration};
+use std::{
+    any::type_name,
+    collections::BTreeSet,
+    convert::TryFrom,
+    iter,
+    sync::atomic::{AtomicUsize, Ordering},
+    time::Duration,
+};
 
 const WARM_UP_TIME: Duration = Duration::from_millis(500);
 const MEASUREMENT_TIME: Duration = Duration::from_millis(1000);
@@ -27,12 +33,7 @@ criterion_group!(
 
 fn benchmarks_for<T, const MAX: usize>(c: &mut Criterion)
 where
-    T: TryFrom<usize>
-        + Ord
-        + std::ops::Rem<Output = T>
-        + num_traits::ops::wrapping::WrappingMul
-        + Clone,
-    <T as TryFrom<usize>>::Error: core::fmt::Debug,
+    T: TryFrom<usize> + Ord + Copy,
 {
     let plot_config = PlotConfiguration::default().summary_scale(AxisScale::Logarithmic);
 
@@ -41,14 +42,14 @@ where
     ];
 
     {
-        let groupname = format!("Search {}", std::any::type_name::<T>());
+        let groupname = format!("Search {}", type_name::<T>());
         let mut group = c.benchmark_group(groupname);
         group
             .warm_up_time(WARM_UP_TIME)
             .measurement_time(MEASUREMENT_TIME)
             .plot_config(plot_config.clone());
 
-        for i in sizes.iter() {
+        for i in sizes {
             search_bench_case::<MAX, T, _>(
                 "sorted_vec",
                 make_sorted_vec,
@@ -78,14 +79,14 @@ where
     }
 
     {
-        let groupname = format!("Search (with duplicates) {}", std::any::type_name::<T>());
+        let groupname = format!("Search (with duplicates) {}", type_name::<T>());
         let mut group = c.benchmark_group(groupname);
         group
             .warm_up_time(WARM_UP_TIME)
             .measurement_time(MEASUREMENT_TIME)
             .plot_config(plot_config.clone());
 
-        for i in sizes.iter() {
+        for i in sizes {
             search_bench_case::<MAX, T, _>(
                 "sorted_vec",
                 make_sorted_vec,
@@ -115,14 +116,14 @@ where
     }
 
     {
-        let groupname = format!("Construction {}", std::any::type_name::<T>());
+        let groupname = format!("Construction {}", type_name::<T>());
         let mut group = c.benchmark_group(groupname);
         group
             .warm_up_time(WARM_UP_TIME)
             .measurement_time(MEASUREMENT_TIME)
             .plot_config(plot_config.clone());
 
-        for i in sizes.iter() {
+        for i in sizes {
             construction_bench_case::<MAX, T, _>(
                 "sorted_vec",
                 make_sorted_vec,
@@ -137,17 +138,14 @@ where
     }
 
     {
-        let groupname = format!(
-            "Construction (with duplicates) {}",
-            std::any::type_name::<T>()
-        );
+        let groupname = format!("Construction (with duplicates) {}", type_name::<T>());
         let mut group = c.benchmark_group(groupname);
         group
             .warm_up_time(WARM_UP_TIME)
             .measurement_time(MEASUREMENT_TIME)
             .plot_config(plot_config);
 
-        for i in sizes.iter() {
+        for i in sizes {
             construction_bench_case::<MAX, T, _>(
                 "sorted_vec",
                 make_sorted_vec,
@@ -167,35 +165,31 @@ fn search_bench_case<const MAX: usize, T, Coll>(
     setup_fun: impl Fn(Vec<T>) -> Coll,
     search_fun: impl Fn(&Coll, T) -> Option<&T>,
     group: &mut BenchmarkGroup<WallTime>,
-    size: &usize,
+    size: usize,
     duplicates: bool,
 ) where
-    T: TryFrom<usize> + Ord + Clone,
-    <T as TryFrom<usize>>::Error: core::fmt::Debug,
+    T: TryFrom<usize> + Ord + Copy,
 {
-    group.bench_with_input(BenchmarkId::new(name, size), size, |b, &size| {
+    group.bench_with_input(BenchmarkId::new(name, size), &size, |b, &size| {
         // increasing sequence of even numbers, bounded by MAX
         let iter = (0usize..)
             // Generate only even numbers to provide a ~50% hit ratio in the benchmark
             .map(|i| (i * 2) % MAX)
-            .map(|i| T::try_from(i).unwrap());
+            .map(|i| T::try_from(i).ok().unwrap());
 
         let v: Vec<T> = if duplicates {
-            iter
-                // Repeat each items 16 times
-                .flat_map(|i| std::iter::repeat(i).take(DUPLICATION_FACTOR))
+            iter.flat_map(|i| iter::repeat(i).take(DUPLICATION_FACTOR))
                 .take(size)
                 .collect()
         } else {
             iter.take(size).collect()
         };
 
-        let mut r = pseudorandom_iter::<T>(std::cmp::min(size * 2, MAX));
+        // to generate ~50% hit ratio generated number should be in the range 0..(size * 2) because
+        // test payload contains only even numbers: [0, 2, ..., 2 * size]
+        let mut r = pseudorandom_iter::<T>(MAX.min(size * 2));
         let c = setup_fun(v);
-        b.iter(|| {
-            let x = r.next().unwrap();
-            let _res = black_box(search_fun(&c, x));
-        })
+        b.iter(|| search_fun(&c, r.next().unwrap()))
     });
 }
 
@@ -203,51 +197,42 @@ fn construction_bench_case<const MAX: usize, T, Coll>(
     name: &str,
     setup_fun: impl Fn(Vec<T>) -> Coll,
     group: &mut BenchmarkGroup<WallTime>,
-    size: &usize,
+    size: usize,
     duplicates: bool,
 ) where
-    T: TryFrom<usize> + Ord + Clone,
-    <T as TryFrom<usize>>::Error: core::fmt::Debug,
+    T: TryFrom<usize> + Ord + Copy,
 {
-    group.bench_with_input(BenchmarkId::new(name, size), size, |b, &size| {
+    group.bench_with_input(BenchmarkId::new(name, size), &size, |b, &size| {
         let v: Vec<T> = if duplicates {
             pseudorandom_iter(MAX)
-                .flat_map(|i| std::iter::repeat(i).take(DUPLICATION_FACTOR))
+                .flat_map(|i| iter::repeat(i).take(DUPLICATION_FACTOR))
                 .take(size)
                 .collect()
         } else {
             pseudorandom_iter(MAX).take(size).collect()
         };
 
-        b.iter_batched(
-            || v.clone(),
-            |v| {
-                let _res = black_box(setup_fun(v));
-            },
-            criterion::BatchSize::SmallInput,
-        );
+        b.iter_batched(|| v.clone(), &setup_fun, BatchSize::SmallInput);
     });
 }
 
 fn make_this<T: Ord>(mut v: Vec<T>) -> OrderedCollection<T> {
     v.sort_unstable();
-    OrderedCollection::from_sorted_iter(v.into_iter())
+    OrderedCollection::from_sorted_iter(v)
 }
 
 fn search_this<T: Ord>(c: &OrderedCollection<T>, x: T) -> Option<&T> {
-    c.find_gte(x).map(|v| &*v)
+    c.find_gte(x)
 }
 
 fn make_btreeset<T: Ord>(v: Vec<T>) -> BTreeSet<T> {
     use std::iter::FromIterator;
-    BTreeSet::from_iter(v.into_iter())
+    BTreeSet::from_iter(v)
 }
 
 fn search_btreeset<T: Ord>(c: &BTreeSet<T>, x: T) -> Option<&T> {
     use std::collections::Bound;
-    c.range((Bound::Included(x), Bound::Unbounded))
-        .next()
-        .map(|v| &*v)
+    c.range((Bound::Included(x), Bound::Unbounded)).next()
 }
 
 fn make_sorted_vec<T: Ord>(mut v: Vec<T>) -> Vec<T> {
@@ -255,23 +240,24 @@ fn make_sorted_vec<T: Ord>(mut v: Vec<T>) -> Vec<T> {
     v
 }
 
-fn search_sorted_vec<'a, T: Ord>(c: &'a Vec<T>, x: T) -> Option<&'a T> {
+#[allow(clippy::ptr_arg)]
+fn search_sorted_vec<T: Ord>(c: &Vec<T>, x: T) -> Option<&T> {
     c.binary_search(&x).ok().map(|i| &c[i])
 }
 
 fn pseudorandom_iter<T>(max: usize) -> impl Iterator<Item = T>
 where
     T: TryFrom<usize>,
-    <T as TryFrom<usize>>::Error: core::fmt::Debug,
 {
     static SEED: AtomicUsize = AtomicUsize::new(0);
     let mut seed = SEED.fetch_add(1, Ordering::SeqCst);
 
-    std::iter::from_fn(move || {
+    iter::from_fn(move || {
         // LCG constants from https://en.wikipedia.org/wiki/Numerical_Recipes.
         seed = seed.wrapping_mul(1664525).wrapping_add(1013904223);
-        let r = (seed >> 32) % max;
 
-        Some(T::try_from(r).unwrap())
+        // High 32 bits have much higher period
+        let value = (seed >> 32) % max;
+        Some(T::try_from(value).ok().unwrap())
     })
 }
