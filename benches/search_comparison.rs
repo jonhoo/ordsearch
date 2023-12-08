@@ -18,10 +18,7 @@ use std::{
 };
 
 /// Because benchmarks are builded with linker flag -rdynamic there should be library entry point defined
-/// in all benchmarks. On macOS linker is able to strip all tango_*() FFI functions, because the corresponding
-/// module tango_bench::cli is not used. On Linux it is not possible to strip them, so we need to define
-/// dummy entry point. This is only needed when two harnesses are used.
-#[cfg(target_os = "linux")]
+/// in all benchmarks. This is only needed when two harnesses are used.
 mod linker_fix {
     tango_bench::tango_benchmarks!([]);
 }
