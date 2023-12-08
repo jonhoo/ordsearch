@@ -1,6 +1,7 @@
 extern crate criterion;
 extern crate num_traits;
 extern crate ordsearch;
+extern crate tango_bench;
 
 use criterion::{
     criterion_group, criterion_main, measurement::WallTime, AxisScale, BatchSize, BenchmarkGroup,
@@ -15,6 +16,15 @@ use std::{
     sync::atomic::{AtomicUsize, Ordering},
     time::Duration,
 };
+
+/// Because benchmarks are builded with linker flag -rdynamic there should be library entry point defined
+/// in all benchmarks. On macOS linker is able to strip all tango_*() FFI functions, because the corresponding
+/// module tango_bench::cli is not used. On Linux it is not possible to strip them, so we need to define
+/// dummy entry point. This is only needed when two harnesses are used.
+#[cfg(target_os = "linux")]
+mod linker_fix {
+    tango_bench::tango_benchmarks!([]);
+}
 
 const WARM_UP_TIME: Duration = Duration::from_millis(500);
 const MEASUREMENT_TIME: Duration = Duration::from_millis(1000);
