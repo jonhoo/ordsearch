@@ -725,7 +725,7 @@ dependencies = [
 [[package]]
 name = "tango-bench"
 version = "0.2.0"
-source = "git+https://github.com/bazhenov/tango.git?branch=dev#0567e4734713155941757bc27c9318ec4c3ac15a"
+source = "git+https://github.com/bazhenov/tango.git?branch=dev#c79a3f063b8ff672a8e64ccb42331b85eaa9c795"
 dependencies = [
  "anyhow",
  "clap",
@@ -733,6 +733,7 @@ dependencies = [
  "glob-match",
  "goblin",
  "libloading",
+ "log",
  "num-traits",
  "rand",
  "scroll",
