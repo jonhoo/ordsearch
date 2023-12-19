@@ -1,7 +1,6 @@
 extern crate criterion;
 extern crate num_traits;
 extern crate ordsearch;
-extern crate tango_bench;
 
 use criterion::{
     criterion_group, criterion_main, measurement::WallTime, AxisScale, BatchSize, BenchmarkGroup,
@@ -16,12 +15,6 @@ use std::{
     sync::atomic::{AtomicUsize, Ordering},
     time::Duration,
 };
-
-/// Because benchmarks are builded with linker flag -rdynamic there should be library entry point defined
-/// in all benchmarks. This is only needed when two harnesses are used.
-mod linker_fix {
-    tango_bench::tango_benchmarks!([]);
-}
 
 const WARM_UP_TIME: Duration = Duration::from_millis(500);
 const MEASUREMENT_TIME: Duration = Duration::from_millis(1000);
