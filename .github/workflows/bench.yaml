@@ -16,11 +16,10 @@ jobs:
           ref: main
           path: baseline-branch
 
-      - name: Prepare Environment
-        run: |
-          rustup update stable
-          rustup default stable
-          cargo install cargo-export --version 0.2.0
+      - name: Install Toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly
 
       - uses: actions/cache@v3
         with:
