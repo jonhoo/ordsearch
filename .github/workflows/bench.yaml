@@ -32,8 +32,10 @@ jobs:
             ./baseline-branch/target/
           key: Bench/${{ runner.os }}
       - name: Install cargo-export
-        if: hashFiles('~/.cargo/bin/cargo-export') == ''
-        run: cargo install cargo-export --version 0.2.0
+        run: |
+          if [ ! -f ~/.cargo/bin/cargo-export ]; then
+            cargo install cargo-export
+          fi
 
       - name: cargo generate-lockfile
         if: hashFiles('Cargo.lock') == ''
