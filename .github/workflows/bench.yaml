@@ -31,6 +31,9 @@ jobs:
             ./target/
             ./baseline-branch/target/
           key: Bench/${{ runner.os }}
+      - name: Install cargo-export
+        if: hashFiles('~/.cargo/bin/cargo-export') == ''
+        run: cargo install cargo-export --version 0.2.0
 
       - name: Building Benchmarks
         run: |
