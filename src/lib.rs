@@ -117,7 +117,7 @@ extern crate alloc;
 extern crate std;
 
 use alloc::vec::Vec;
-use core::borrow::Borrow;
+use core::{borrow::Borrow, mem};
 
 /// A collection of ordered items that can efficiently satisfy queries for nearby elements.
 ///
@@ -154,6 +154,26 @@ impl<T: Ord> From<Vec<T>> for OrderedCollection<T> {
         v.sort_unstable();
         Self::from_sorted_iter(v)
     }
+}
+
+/// Constructs a `Vec<T>` aligned to a cache line boundary
+///
+/// Allocates `size` elements of type `T` and returns a `Vec<T>` with capacity `size` and length 0. Underling
+/// memory is aligned to a cache line boundary.
+unsafe fn aligned_vec<T>(size: usize) -> Vec<T> {
+    #[repr(C, align(64))]
+    struct CacheLine([u8; 64]);
+
+    let size_in_bytes = size * mem::size_of::<T>();
+    let size_of_cache_line = mem::size_of::<CacheLine>();
+    let cache_lines = (size_in_bytes + size_of_cache_line - 1) / size_of_cache_line;
+
+    // Because `Vec` is guarateed to properly align underlying buffer for a given type `T`, we can
+    // assume that the underlying buffer is aligned to a cache line boundary.
+    let mut aligned: Vec<CacheLine> = Vec::with_capacity(cache_lines);
+    let aligned_buffer = aligned.as_mut_ptr();
+    mem::forget(aligned);
+    Vec::from_raw_parts(aligned_buffer as _, 0, size)
 }
 
 /// Insert items from the sorted iterator `I` into `Vec<T>` in complete binary tree order.
@@ -210,7 +230,7 @@ impl<T: Ord> OrderedCollection<T> {
     //
     // but, we don't actually *need* k. we only ever use 2^k. so, we can just use 64/sizeof(T)
     // directly! nice. we call this the multiplier (because it's what we'll multiply i by).
-    const MULTIPLIER: usize = 64 / core::mem::size_of::<T>();
+    const MULTIPLIER: usize = 64 / mem::size_of::<T>();
 
     // now for those additions we had to do above. well, we know that the offset is really just
     // 2^k - 1, and we know that multiplier == 2^k, so we're done. right?
@@ -283,7 +303,7 @@ impl<T: Ord> OrderedCollection<T> {
     {
         let iter = iter.into_iter();
         let n = iter.len();
-        let mut context = (Vec::with_capacity(n), iter);
+        let mut context = (unsafe { aligned_vec::<T>(n) }, iter);
         eytzinger_walk(&mut context, 0);
         let (mut items, _) = context;
 
