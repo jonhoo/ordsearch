@@ -19,21 +19,10 @@ jobs:
       - name: Install Toolchain
         uses: dtolnay/rust-toolchain@nightly
 
-      - uses: actions/cache@v3
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
         with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            ./target/
-            ./baseline-branch/target/
-          key: Bench/${{ runner.os }}
-      - name: Install cargo-export
-        run: |
-          if [ ! -f ~/.cargo/bin/cargo-export ]; then
-            cargo install cargo-export
-          fi
+          tool: cargo-export
 
       - name: cargo generate-lockfile
         if: hashFiles('Cargo.lock') == ''
