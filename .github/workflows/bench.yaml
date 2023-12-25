@@ -1,0 +1,49 @@
+name: Benchmarks
+
+permissions:
+  contents: read
+
+on:
+  pull_request:
+
+jobs:
+  bench:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          path: baseline-branch
+
+      - name: Install Toolchain
+        uses: dtolnay/rust-toolchain@nightly
+
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-export
+
+      - name: cargo generate-lockfile
+        if: hashFiles('Cargo.lock') == ''
+        run: cargo generate-lockfile
+      - name: Building Benchmarks
+        run: |
+          cargo export target/benchmarks -- bench --bench=search_ord --locked
+          # !!!SHOULD BE FIXED AFTER MERGE TO MAIN!!!
+          # At the moment we can only test branch agains itself, because there is no
+          # tango benchmarks on the main.
+          # cd baseline-branch
+          # cargo export target/benchmarks -- bench --bench=search_ord --locked
+
+      - name: Run Benchmarks
+        run: |
+          set -eo pipefail
+
+          target/benchmarks/search_ord --color=never compare target/benchmarks/search_ord \
+            -ot 1 --fail-threshold 10 | tee target/benchmark.txt
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: benchmark.txt
+          path: target/benchmark.txt
