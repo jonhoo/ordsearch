@@ -171,7 +171,7 @@ where
     }
 
     // visit left child
-    eytzinger_walk(context, 2 * i + 1);
+    eytzinger_walk(context, 2 * i);
 
     // reborrow context
     let (v, iter) = context;
@@ -185,7 +185,7 @@ where
     }
 
     // visit right child
-    eytzinger_walk(context, 2 * i + 2);
+    eytzinger_walk(context, 2 * i + 1);
 }
 
 impl<T: Ord> OrderedCollection<T> {
@@ -196,12 +196,12 @@ impl<T: Ord> OrderedCollection<T> {
     // we therefore need to find at what depth a single prefetch fetches all the descendants.
     // it turns out that, at depth k under some node with index i, the leftmost child is at:
     //
-    //   2^k * i + 2^(k-1) + 2^(k-2) + ... + 2^0 = 2^k * i + 2^k - 1
+    //   2^k * i
     //
-    // this follows from the fact that the leftmost immediate child of node i is at 2i + 1 by
+    // this follows from the fact that the leftmost immediate child of node i is at 2i by
     // recursively expanding i. if you're curious, the rightmost child is at:
     //
-    //   2^k * i + 2^k + 2^(k-1) + ... + 2^1 = 2^k * i + 2^(k+1) - 1
+    //   2^k * i + 2^k - 1
     //
     // at depth k, there are 2^k children. we can fit 64/sizeof(T) children in a cacheline, so
     // we want to use the depth k that has 64/sizeof(T) children. so, we want:
@@ -212,8 +212,7 @@ impl<T: Ord> OrderedCollection<T> {
     // directly! nice. we call this the multiplier (because it's what we'll multiply i by).
     const MULTIPLIER: usize = 64 / core::mem::size_of::<T>();
 
-    // now for those additions we had to do above. well, we know that the offset is really just
-    // 2^k - 1, and we know that multiplier == 2^k, so we're done. right?
+    // now we know that multiplier == 2^k, so we're done. right?
     //
     // right?
     //
@@ -226,7 +225,7 @@ impl<T: Ord> OrderedCollection<T> {
     // a cacheline with any of the other items at that level! that's not great. so, instead, we
     // prefetch the address that is half-way through the set of children. that way, we ensure
     // that we prefetch at least half of the items.
-    const OFFSET: usize = Self::MULTIPLIER + Self::MULTIPLIER / 2;
+    const OFFSET: usize = Self::MULTIPLIER / 2;
 
     /// Construct a new `OrderedCollection` from an iterator over sorted elements.
     ///
@@ -272,23 +271,26 @@ impl<T: Ord> OrderedCollection<T> {
     /// s.insert(89);
     /// s.insert(7);
     /// s.insert(12);
-    /// let a = OrderedCollection::from_sorted_iter(s.iter());
-    /// assert_eq!(a.find_gte(50), Some(&&89));
+    /// let a = OrderedCollection::from_sorted_iter(s.iter().copied());
+    /// assert_eq!(a.find_gte(50), Some(&89));
     /// ```
     ///
     pub fn from_sorted_iter<I>(iter: I) -> Self
     where
         I: IntoIterator<Item = T>,
-        I::IntoIter: ExactSizeIterator<Item = T>,
+        I::IntoIter: ExactSizeIterator,
     {
         let iter = iter.into_iter();
         let n = iter.len();
-        let mut context = (Vec::with_capacity(n), iter);
-        eytzinger_walk(&mut context, 0);
+        // the root element is located in a right slot of the root node, so we need to allocate n + 1 elements
+        let mut context = (Vec::with_capacity(n + 1), iter);
+        // Here we start filling the vector from the lement with index 1, leaving 0th element uninitialized.
+        // Therefore accessing the 0th element is Undefined Behavior.
+        eytzinger_walk(&mut context, 1);
         let (mut items, _) = context;
 
-        // it's now safe to set the length, since all `n` elements have been inserted.
-        unsafe { items.set_len(n) };
+        // it's now safe to set the length, since all `n` elements have been inserted (do not forget the root node).
+        unsafe { items.set_len(n + 1) };
 
         OrderedCollection { items }
     }
@@ -333,29 +335,45 @@ impl<T: Ord> OrderedCollection<T> {
         X: Ord,
     {
         let x = x.borrow();
-        let mut i = 0;
+        let mut i = 1;
+
         let mask = prefetch_mask(self.items.len());
+        // the search loop is proven to be CPU-backend and not memory bound when using prefetch. So offset part
+        // of prefetch address is intentionally not masked, it allows to do less arithmetic in the loop.
+        // It doesn't affect masking much because `Self::OFFSET` is just half of a cache line.
+        let prefetch_ptr = self.items.as_ptr().wrapping_add(Self::OFFSET);
 
         while i < self.items.len() {
-            let offset = (Self::MULTIPLIER * i + Self::OFFSET) & mask;
-            do_prefetch(self.items.as_ptr().wrapping_add(offset));
+            let offset = (Self::MULTIPLIER * i) & mask;
+            do_prefetch(prefetch_ptr.wrapping_add(offset));
 
             // safe because i < self.items.len()
             let value = unsafe { self.items.get_unchecked(i) }.borrow();
             // using branchless index update. At the moment compiler cannot reliably tranform
             // if expressions to branchless instructions like `cmov` and `setb`
-            i = 2 * i + 1 + usize::from(x > value);
+            i = 2 * i + usize::from(x > value);
         }
 
-        // we want ffs(~(i + 1))
-        // since ctz(x) = ffs(x) - 1
-        // we use ctz(~(i + 1)) + 1
-        let j = (i + 1) >> ((!(i + 1)).trailing_zeros() + 1);
-        if j == 0 {
-            None
-        } else {
-            Some(unsafe { self.items.get_unchecked(j - 1) })
-        }
+        // Because the branchless loop navigates the tree until we reach a leaf node regardless of whether
+        // the value is found or not, we now need to decode the found value index, if any.
+        //
+        // To understand how this works, it is useful to think of the index as a binary number.
+        // The index update strategy always multiplies the index by 2 (which can be seen as `i <<= 1`)
+        // and then adds 1 (which can be seen as `i |= 1`) if the value is greater than the current node value.
+        // So, we can interpret the bits in index as a history of turns we made in the tree: a 0 bit means
+        // we went left, a 1 bit means we went right.
+        //
+        // Another important observation is that when we find the target value, we make a left turn
+        // and the corresponding bit in the index will be 0. More importantly, all subsequent bits
+        // will be 1, because after we made a left turn we ended up in a subtree where all values
+        // are less than the target value.
+        //
+        // Therefore, to decode the index we need to:
+        //   1. get rid of all trailing 1 bits (dummy turns we made after we found the target value)
+        //   2. get rid of one more bit to restore the index state before we made a left turn at the target element
+        //   3. check if the resulting index is greater than 0 (0 means the target value is not in the tree)
+        i >>= i.trailing_ones() + 1;
+        (i > 0).then(|| unsafe { self.items.get_unchecked(i) })
     }
 }
 
@@ -370,16 +388,19 @@ fn do_prefetch<T>(addr: *const T) {
 #[cfg(not(feature = "nightly"))]
 fn do_prefetch<T>(_addr: *const T) {}
 
-/// Calculates prefetch mask for a given collection size.
+/// Calculates the prefetch mask for a given collection size.
 ///
-/// Creates binary mask that fully covers given [`usize`] value (eg. for the value `0b100` the mask is `0b111`).
-/// Prefetch mask is used to keep an element address inside an array boundaries when prefetching next values from the
-/// memory. Although, it is totally valid to prefetch invalid addresses from x86 point of view[^1],
-/// on some CPUs it can lead to performance degradation[^2].
+/// Creates a binary mask that fully covers a given [`usize`] value (e.g., for the value `0b100`, the mask is `0b111`).
+/// The prefetch mask is used to keep an element address inside the array boundaries when prefetching next values from
+/// memory.
+///
+/// It is totally valid to prefetch invalid addresses from an x86 perspective[^1], but such prefetches do not
+/// aid algorithm performance and may worsen it by thrashing the CPU cache. Instead of prefetching outside
+/// the array boundaries, we use a prefetch mask to zero the offset and prefetch the first elements of the array
+/// instead, aiding subsequent searches. Essentially, masking the offset is a cheaper alternative to the
+/// `offset % size` function.
 ///
 /// [^1]: [Intel® 64 and IA-32 Architectures Software Developer’s Manual](https://software.intel.com/en-us/download/intel-64-and-ia-32-architectures-sdm-combined-volumes-1-2a-2b-2c-2d-3a-3b-3c-3d-and-4)
-///
-/// [^2]: [Array Layouts for Comparison-Based Searching. Section 5.3](https://arxiv.org/pdf/1509.05053.pdf)
 fn prefetch_mask(n: usize) -> usize {
     if n > 0 {
         usize::max_value() >> n.leading_zeros()
