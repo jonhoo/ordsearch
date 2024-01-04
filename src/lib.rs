@@ -338,7 +338,7 @@ impl<T: Ord> OrderedCollection<T> {
         let mut i = 1;
 
         let mask = prefetch_mask(self.items.len());
-        // the search loop is proven to be CPU-backend and not memory bound when using prefetch. So offset part
+        // the search loop is arithmetic-bound, not memory-bound when using prefetch. So offset part
         // of prefetch address is intentionally not masked, it allows to do less arithmetic in the loop.
         // It doesn't affect masking much because `Self::OFFSET` is just half of a cache line.
         let prefetch_ptr = self.items.as_ptr().wrapping_add(Self::OFFSET);
