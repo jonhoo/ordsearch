@@ -199,7 +199,11 @@ impl<T: Ord> OrderedCollection<T> {
     //   2^k * i
     //
     // this follows from the fact that the leftmost immediate child of node i is at 2i by
-    // recursively expanding i. if you're curious, the rightmost child is at:
+    // recursively expanding i. Note that the original paper uses 0-based indexing (`2i + 1`/`2i + 2`) while we
+    // use 1-based indexing (`2i`/`2i + 1`). This is because of performance reasons (see:
+    // [Optimized Eytzinger layout & memory prefetch](https://github.com/jonhoo/ordsearch/pull/27)).
+    //
+    // If you're curious, the rightmost child is at:
     //
     //   2^k * i + 2^k - 1
     //
