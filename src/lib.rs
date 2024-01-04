@@ -189,46 +189,46 @@ where
 }
 
 impl<T: Ord> OrderedCollection<T> {
-    // this computation is a little finicky, so let's walk through it.
-    //
-    // we want to prefetch a couple of levels down in the tree from where we are.
-    // however, we can only fetch one cacheline at a time (assume a line holds 64b).
-    // we therefore need to find at what depth a single prefetch fetches all the descendants.
-    // it turns out that, at depth k under some node with index i, the leftmost child is at:
-    //
-    //   2^k * i
-    //
-    // this follows from the fact that the leftmost immediate child of node i is at 2i by
-    // recursively expanding i. Note that the original paper uses 0-based indexing (`2i + 1`/`2i + 2`) while we
-    // use 1-based indexing (`2i`/`2i + 1`). This is because of performance reasons (see:
-    // [Optimized Eytzinger layout & memory prefetch](https://github.com/jonhoo/ordsearch/pull/27)).
-    //
-    // If you're curious, the rightmost child is at:
-    //
-    //   2^k * i + 2^k - 1
-    //
-    // at depth k, there are 2^k children. we can fit 64/sizeof(T) children in a cacheline, so
-    // we want to use the depth k that has 64/sizeof(T) children. so, we want:
-    //
-    //   2^k = 64/sizeof(T)
-    //
-    // but, we don't actually *need* k. we only ever use 2^k. so, we can just use 64/sizeof(T)
-    // directly! nice. we call this the multiplier (because it's what we'll multiply i by).
+    /// this computation is a little finicky, so let's walk through it.
+    ///
+    /// we want to prefetch a couple of levels down in the tree from where we are.
+    /// however, we can only fetch one cacheline at a time (assume a line holds 64b).
+    /// we therefore need to find at what depth a single prefetch fetches all the descendants.
+    /// it turns out that, at depth k under some node with index i, the leftmost child is at:
+    ///
+    ///   2^k * i
+    ///
+    /// this follows from the fact that the leftmost immediate child of node i is at 2i by
+    /// recursively expanding i. Note that the original paper uses 0-based indexing (`2i + 1`/`2i + 2`) while we
+    /// use 1-based indexing (`2i`/`2i + 1`). This is because of performance reasons (see:
+    /// [Optimized Eytzinger layout & memory prefetch](https://github.com/jonhoo/ordsearch/pull/27)).
+    ///
+    /// If you're curious, the rightmost child is at:
+    ///
+    ///   2^k * i + 2^k - 1
+    ///
+    /// at depth k, there are 2^k children. we can fit 64/sizeof(T) children in a cacheline, so
+    /// we want to use the depth k that has 64/sizeof(T) children. so, we want:
+    ///
+    ///   2^k = 64/sizeof(T)
+    ///
+    /// but, we don't actually *need* k. we only ever use 2^k. so, we can just use 64/sizeof(T)
+    /// directly! nice. we call this the multiplier (because it's what we'll multiply i by).
     const MULTIPLIER: usize = 64 / core::mem::size_of::<T>();
 
-    // now we know that multiplier == 2^k, so we're done. right?
-    //
-    // right?
-    //
-    // well, only sort of. the prefetch instruction fetches the cache-line that *holds* the
-    // given memory address. let's denote cache lines with []. what if we have:
-    //
-    //   [..., 2^k + 2^k-1] [2^k + 2^k, ...]
-    //
-    // essentially, we got unlucky with the alignment so that the leftmost child is not sharing
-    // a cacheline with any of the other items at that level! that's not great. so, instead, we
-    // prefetch the address that is half-way through the set of children. that way, we ensure
-    // that we prefetch at least half of the items.
+    /// now we know that multiplier == 2^k, so we're done. right?
+    ///
+    /// right?
+    ///
+    /// well, only sort of. the prefetch instruction fetches the cache-line that *holds* the
+    /// given memory address. let's denote cache lines with []. what if we have:
+    ///
+    ///   [..., 2^k + 2^k-1] [2^k + 2^k, ...]
+    ///
+    /// essentially, we got unlucky with the alignment so that the leftmost child is not sharing
+    /// a cacheline with any of the other items at that level! that's not great. so, instead, we
+    /// prefetch the address that is half-way through the set of children. that way, we ensure
+    /// that we prefetch at least half of the items.
     const OFFSET: usize = Self::MULTIPLIER / 2;
 
     /// Construct a new `OrderedCollection` from an iterator over sorted elements.
