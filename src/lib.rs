@@ -345,6 +345,7 @@ impl<T: Ord> OrderedCollection<T> {
         // the search loop is arithmetic-bound, not memory-bound when using prefetch. So offset part
         // of prefetch address is intentionally not masked, it allows to do less arithmetic in the loop.
         // It doesn't affect masking much because `Self::OFFSET` is just half of a cache line.
+        // (see: [Optimized Eytzinger layout & memory prefetch](https://github.com/jonhoo/ordsearch/pull/27))
         let prefetch_ptr = self.items.as_ptr().wrapping_add(Self::OFFSET);
 
         while i < self.items.len() {
