@@ -140,6 +140,14 @@ use core::{
 /// assert_eq!(x.find_gte(65), None);
 /// ```
 pub struct OrderedCollection<T> {
+    /// Contains all the elements in modified Eytzinger layout
+    ///
+    /// This vector is 1-indexed, so the root is at index 1. `[0]` element is intentionally left uninitialized
+    /// to not introduce any additional trait bounds on `T` (like `Copy` or `Default`).
+    ///
+    /// # Safety
+    /// Not under any circumstances `[0]` should be accessed. This is especially important in `Drop`
+    /// implementation and [`eytzinger_walk()`]/[`find_gte()`] functions.
     items: Vec<MaybeUninit<T>>,
 }
 
@@ -289,14 +297,12 @@ impl<T: Ord> OrderedCollection<T> {
     {
         let iter = iter.into_iter();
         let n = iter.len();
-        // the root element is located in a right slot of the root node, so we need to allocate n + 1 elements
+        // vec with capacity n + 1 because we don't use index 0 and starts with 1
         let mut context = (Vec::with_capacity(n + 1), iter);
-        // Here we start filling the vector from the lement with index 1, leaving 0th element uninitialized.
-        // Therefore accessing the 0th element is Undefined Behavior.
         eytzinger_walk(&mut context, 1);
         let (mut items, _) = context;
 
-        // it's now safe to set the length, since all `n` elements have been inserted (do not forget the root node).
+        // here we assume all `n` elements from the iterator was inserted in items
         unsafe { items.set_len(n + 1) };
 
         OrderedCollection { items }
@@ -341,23 +347,24 @@ impl<T: Ord> OrderedCollection<T> {
         T: Borrow<X>,
         X: Ord,
     {
-        let items: &Vec<T> = unsafe { mem::transmute(&self.items) };
         let x = x.borrow();
+
+        // Safety: this function should not address self.items[0], because it is not initialized
         let mut i = 1;
 
-        let mask = prefetch_mask(items.len());
+        let mask = prefetch_mask(self.items.len());
         // the search loop is arithmetic-bound, not memory-bound when using prefetch. So offset part
         // of prefetch address is intentionally not masked, it allows to do less arithmetic in the loop.
         // It doesn't affect masking much because `Self::OFFSET` is just half of a cache line.
         // (see: [Optimized Eytzinger layout & memory prefetch](https://github.com/jonhoo/ordsearch/pull/27))
-        let prefetch_ptr = items.as_ptr().wrapping_add(Self::OFFSET);
+        let prefetch_ptr = self.items.as_ptr().wrapping_add(Self::OFFSET);
 
-        while i < items.len() {
+        while i < self.items.len() {
             let offset = (Self::MULTIPLIER * i) & mask;
             do_prefetch(prefetch_ptr.wrapping_add(offset));
 
-            // safe because i < self.items.len()
-            let value = unsafe { items.get_unchecked(i) }.borrow();
+            // safe because 1 <= i < self.items.len()
+            let value = unsafe { self.items.get_unchecked(i).assume_init_ref() }.borrow();
             // using branchless index update. At the moment compiler cannot reliably tranform
             // if expressions to branchless instructions like `cmov` and `setb`
             i = 2 * i + usize::from(x > value);
@@ -382,13 +389,13 @@ impl<T: Ord> OrderedCollection<T> {
         //   2. get rid of one more bit to restore the index state before we made a left turn at the target element
         //   3. check if the resulting index is greater than 0 (0 means the target value is not in the tree)
         i >>= i.trailing_ones() + 1;
-        (i > 0).then(|| unsafe { items.get_unchecked(i) })
+        (i > 0).then(|| unsafe { self.items.get_unchecked(i).assume_init_ref() })
     }
 }
 
 impl<T> Drop for OrderedCollection<T> {
     fn drop(&mut self) {
-        // we need to drop all elements except the 0th one, which is uninitialized by design
+        // we need to drop all elements except the 0th one, which is uninitialized
         let items: &mut Vec<T> = unsafe { mem::transmute(&mut self.items) };
         items.truncate(1);
     }
