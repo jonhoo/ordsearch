@@ -117,7 +117,10 @@ extern crate alloc;
 extern crate std;
 
 use alloc::vec::Vec;
-use core::borrow::Borrow;
+use core::{
+    borrow::Borrow,
+    mem::{self, MaybeUninit},
+};
 
 /// A collection of ordered items that can efficiently satisfy queries for nearby elements.
 ///
@@ -137,7 +140,7 @@ use core::borrow::Borrow;
 /// assert_eq!(x.find_gte(65), None);
 /// ```
 pub struct OrderedCollection<T> {
-    items: Vec<T>,
+    items: Vec<MaybeUninit<T>>,
 }
 
 impl<T: Ord> From<Vec<T>> for OrderedCollection<T> {
@@ -161,7 +164,7 @@ impl<T: Ord> From<Vec<T>> for OrderedCollection<T> {
 /// Requires `I` to be a sorted iterator.
 /// Requires `Vec<T>` capacity to be set to the number of elements in `iter`.
 /// The length of `Vec<T>` will not be changed by this function.
-fn eytzinger_walk<I, T>(context: &mut (Vec<T>, I), i: usize)
+fn eytzinger_walk<I, T>(context: &mut (Vec<MaybeUninit<T>>, I), i: usize)
 where
     I: Iterator<Item = T>,
 {
@@ -181,7 +184,7 @@ where
     // the length of the iterator.
     let value = iter.next().unwrap();
     unsafe {
-        v.as_mut_ptr().add(i).write(value);
+        v.as_mut_ptr().add(i).write(MaybeUninit::new(value));
     }
 
     // visit right child
@@ -214,7 +217,7 @@ impl<T: Ord> OrderedCollection<T> {
     ///
     /// but, we don't actually *need* k. we only ever use 2^k. so, we can just use 64/sizeof(T)
     /// directly! nice. we call this the multiplier (because it's what we'll multiply i by).
-    const MULTIPLIER: usize = 64 / core::mem::size_of::<T>();
+    const MULTIPLIER: usize = 64 / mem::size_of::<T>();
 
     /// now we know that multiplier == 2^k, so we're done. right?
     ///
@@ -338,22 +341,23 @@ impl<T: Ord> OrderedCollection<T> {
         T: Borrow<X>,
         X: Ord,
     {
+        let items: &Vec<T> = unsafe { mem::transmute(&self.items) };
         let x = x.borrow();
         let mut i = 1;
 
-        let mask = prefetch_mask(self.items.len());
+        let mask = prefetch_mask(items.len());
         // the search loop is arithmetic-bound, not memory-bound when using prefetch. So offset part
         // of prefetch address is intentionally not masked, it allows to do less arithmetic in the loop.
         // It doesn't affect masking much because `Self::OFFSET` is just half of a cache line.
         // (see: [Optimized Eytzinger layout & memory prefetch](https://github.com/jonhoo/ordsearch/pull/27))
-        let prefetch_ptr = self.items.as_ptr().wrapping_add(Self::OFFSET);
+        let prefetch_ptr = items.as_ptr().wrapping_add(Self::OFFSET);
 
-        while i < self.items.len() {
+        while i < items.len() {
             let offset = (Self::MULTIPLIER * i) & mask;
             do_prefetch(prefetch_ptr.wrapping_add(offset));
 
             // safe because i < self.items.len()
-            let value = unsafe { self.items.get_unchecked(i) }.borrow();
+            let value = unsafe { items.get_unchecked(i) }.borrow();
             // using branchless index update. At the moment compiler cannot reliably tranform
             // if expressions to branchless instructions like `cmov` and `setb`
             i = 2 * i + usize::from(x > value);
@@ -378,7 +382,15 @@ impl<T: Ord> OrderedCollection<T> {
         //   2. get rid of one more bit to restore the index state before we made a left turn at the target element
         //   3. check if the resulting index is greater than 0 (0 means the target value is not in the tree)
         i >>= i.trailing_ones() + 1;
-        (i > 0).then(|| unsafe { self.items.get_unchecked(i) })
+        (i > 0).then(|| unsafe { items.get_unchecked(i) })
+    }
+}
+
+impl<T> Drop for OrderedCollection<T> {
+    fn drop(&mut self) {
+        // we need to drop all elements except the 0th one, which is uninitialized by design
+        let items: &mut Vec<T> = unsafe { mem::transmute(&mut self.items) };
+        items.truncate(1);
     }
 }
 
@@ -417,7 +429,7 @@ fn prefetch_mask(n: usize) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use alloc::vec;
+    use alloc::{boxed::Box, vec};
 
     #[test]
     fn complete_exact() {
@@ -499,5 +511,17 @@ mod tests {
         assert_eq!(prefetch_mask(3), 0b011);
         assert_eq!(prefetch_mask(4), 0b111);
         assert_eq!(prefetch_mask(usize::max_value()), usize::max_value());
+    }
+
+    /// Because we're using non standard Eytzinger layout with uninitialized first element, we need to ensure that
+    /// the `OrderedCollection` is safe to drop for non primitive types with custom drop logic. This test is supposed
+    /// to be run with `miri`.
+    #[test]
+    fn check_drop_safety() {
+        drop(OrderedCollection::from(vec![
+            Box::new(1),
+            Box::new(2),
+            Box::new(3),
+        ]));
     }
 }
