@@ -117,7 +117,10 @@ extern crate alloc;
 extern crate std;
 
 use alloc::vec::Vec;
-use core::borrow::Borrow;
+use core::{
+    borrow::Borrow,
+    mem::{self, MaybeUninit},
+};
 
 /// A collection of ordered items that can efficiently satisfy queries for nearby elements.
 ///
@@ -137,7 +140,15 @@ use core::borrow::Borrow;
 /// assert_eq!(x.find_gte(65), None);
 /// ```
 pub struct OrderedCollection<T> {
-    items: Vec<T>,
+    /// Contains all the elements in modified Eytzinger layout
+    ///
+    /// This vector is 1-indexed, so the root is at index 1. `[0]` element is intentionally left uninitialized
+    /// to not introduce any additional trait bounds on `T` (like `Copy` or `Default`).
+    ///
+    /// # Safety
+    /// Not under any circumstances `[0]` should be accessed. This is especially important in `Drop`
+    /// implementation and [`eytzinger_walk()`]/[`find_gte()`] functions.
+    items: Vec<MaybeUninit<T>>,
 }
 
 impl<T: Ord> From<Vec<T>> for OrderedCollection<T> {
@@ -161,7 +172,7 @@ impl<T: Ord> From<Vec<T>> for OrderedCollection<T> {
 /// Requires `I` to be a sorted iterator.
 /// Requires `Vec<T>` capacity to be set to the number of elements in `iter`.
 /// The length of `Vec<T>` will not be changed by this function.
-fn eytzinger_walk<I, T>(context: &mut (Vec<T>, I), i: usize)
+fn eytzinger_walk<I, T>(context: &mut (Vec<MaybeUninit<T>>, I), i: usize)
 where
     I: Iterator<Item = T>,
 {
@@ -171,7 +182,7 @@ where
     }
 
     // visit left child
-    eytzinger_walk(context, 2 * i + 1);
+    eytzinger_walk(context, 2 * i);
 
     // reborrow context
     let (v, iter) = context;
@@ -181,52 +192,55 @@ where
     // the length of the iterator.
     let value = iter.next().unwrap();
     unsafe {
-        v.as_mut_ptr().add(i).write(value);
+        v.as_mut_ptr().add(i).write(MaybeUninit::new(value));
     }
 
     // visit right child
-    eytzinger_walk(context, 2 * i + 2);
+    eytzinger_walk(context, 2 * i + 1);
 }
 
 impl<T: Ord> OrderedCollection<T> {
-    // this computation is a little finicky, so let's walk through it.
-    //
-    // we want to prefetch a couple of levels down in the tree from where we are.
-    // however, we can only fetch one cacheline at a time (assume a line holds 64b).
-    // we therefore need to find at what depth a single prefetch fetches all the descendants.
-    // it turns out that, at depth k under some node with index i, the leftmost child is at:
-    //
-    //   2^k * i + 2^(k-1) + 2^(k-2) + ... + 2^0 = 2^k * i + 2^k - 1
-    //
-    // this follows from the fact that the leftmost immediate child of node i is at 2i + 1 by
-    // recursively expanding i. if you're curious, the rightmost child is at:
-    //
-    //   2^k * i + 2^k + 2^(k-1) + ... + 2^1 = 2^k * i + 2^(k+1) - 1
-    //
-    // at depth k, there are 2^k children. we can fit 64/sizeof(T) children in a cacheline, so
-    // we want to use the depth k that has 64/sizeof(T) children. so, we want:
-    //
-    //   2^k = 64/sizeof(T)
-    //
-    // but, we don't actually *need* k. we only ever use 2^k. so, we can just use 64/sizeof(T)
-    // directly! nice. we call this the multiplier (because it's what we'll multiply i by).
-    const MULTIPLIER: usize = 64 / core::mem::size_of::<T>();
+    /// this computation is a little finicky, so let's walk through it.
+    ///
+    /// we want to prefetch a couple of levels down in the tree from where we are.
+    /// however, we can only fetch one cacheline at a time (assume a line holds 64b).
+    /// we therefore need to find at what depth a single prefetch fetches all the descendants.
+    /// it turns out that, at depth k under some node with index i, the leftmost child is at:
+    ///
+    ///   2^k * i
+    ///
+    /// this follows from the fact that the leftmost immediate child of node i is at 2i by
+    /// recursively expanding i. Note that the original paper uses 0-based indexing (`2i + 1`/`2i + 2`) while we
+    /// use 1-based indexing (`2i`/`2i + 1`). This is because of performance reasons (see:
+    /// [Optimized Eytzinger layout & memory prefetch](https://github.com/jonhoo/ordsearch/pull/27)).
+    ///
+    /// If you're curious, the rightmost child is at:
+    ///
+    ///   2^k * i + 2^k - 1
+    ///
+    /// at depth k, there are 2^k children. we can fit 64/sizeof(T) children in a cacheline, so
+    /// we want to use the depth k that has 64/sizeof(T) children. so, we want:
+    ///
+    ///   2^k = 64/sizeof(T)
+    ///
+    /// but, we don't actually *need* k. we only ever use 2^k. so, we can just use 64/sizeof(T)
+    /// directly! nice. we call this the multiplier (because it's what we'll multiply i by).
+    const MULTIPLIER: usize = 64 / mem::size_of::<T>();
 
-    // now for those additions we had to do above. well, we know that the offset is really just
-    // 2^k - 1, and we know that multiplier == 2^k, so we're done. right?
-    //
-    // right?
-    //
-    // well, only sort of. the prefetch instruction fetches the cache-line that *holds* the
-    // given memory address. let's denote cache lines with []. what if we have:
-    //
-    //   [..., 2^k + 2^k-1] [2^k + 2^k, ...]
-    //
-    // essentially, we got unlucky with the alignment so that the leftmost child is not sharing
-    // a cacheline with any of the other items at that level! that's not great. so, instead, we
-    // prefetch the address that is half-way through the set of children. that way, we ensure
-    // that we prefetch at least half of the items.
-    const OFFSET: usize = Self::MULTIPLIER + Self::MULTIPLIER / 2;
+    /// now we know that multiplier == 2^k, so we're done. right?
+    ///
+    /// right?
+    ///
+    /// well, only sort of. the prefetch instruction fetches the cache-line that *holds* the
+    /// given memory address. let's denote cache lines with []. what if we have:
+    ///
+    ///   [..., 2^k + 2^k-1] [2^k + 2^k, ...]
+    ///
+    /// essentially, we got unlucky with the alignment so that the leftmost child is not sharing
+    /// a cacheline with any of the other items at that level! that's not great. so, instead, we
+    /// prefetch the address that is half-way through the set of children. that way, we ensure
+    /// that we prefetch at least half of the items.
+    const OFFSET: usize = Self::MULTIPLIER / 2;
 
     /// Construct a new `OrderedCollection` from an iterator over sorted elements.
     ///
@@ -272,23 +286,25 @@ impl<T: Ord> OrderedCollection<T> {
     /// s.insert(89);
     /// s.insert(7);
     /// s.insert(12);
-    /// let a = OrderedCollection::from_sorted_iter(s.iter());
-    /// assert_eq!(a.find_gte(50), Some(&&89));
+    /// let a = OrderedCollection::from_sorted_iter(s.iter().copied());
+    /// assert_eq!(a.find_gte(50), Some(&89));
     /// ```
     ///
     pub fn from_sorted_iter<I>(iter: I) -> Self
     where
         I: IntoIterator<Item = T>,
-        I::IntoIter: ExactSizeIterator<Item = T>,
+        I::IntoIter: ExactSizeIterator,
     {
         let iter = iter.into_iter();
         let n = iter.len();
-        let mut context = (Vec::with_capacity(n), iter);
-        eytzinger_walk(&mut context, 0);
+        // vec with capacity n + 1 because we don't use index 0 and starts with 1
+        let mut context = (Vec::with_capacity(n + 1), iter);
+        eytzinger_walk(&mut context, 1);
         let (mut items, _) = context;
 
-        // it's now safe to set the length, since all `n` elements have been inserted.
-        unsafe { items.set_len(n) };
+        // SAFETY: all `n` elements from the iterator was inserted in items.
+        // [0] is uninitialized, but that's okay since the value type is `MaybeUninit`.
+        unsafe { items.set_len(n + 1) };
 
         OrderedCollection { items }
     }
@@ -333,29 +349,62 @@ impl<T: Ord> OrderedCollection<T> {
         X: Ord,
     {
         let x = x.borrow();
-        let mut i = 0;
+
+        // Safety: this function should not address self.items[0], because it is not initialized
+        let mut i = 1;
+
         let mask = prefetch_mask(self.items.len());
+        // the search loop is arithmetic-bound, not memory-bound when using prefetch. So offset part
+        // of prefetch address is intentionally not masked, it allows to do less arithmetic in the loop.
+        // It doesn't affect masking much because `Self::OFFSET` is just half of a cache line.
+        // (see: [Optimized Eytzinger layout & memory prefetch](https://github.com/jonhoo/ordsearch/pull/27))
+        let prefetch_ptr = self.items.as_ptr().wrapping_add(Self::OFFSET);
 
         while i < self.items.len() {
-            let offset = (Self::MULTIPLIER * i + Self::OFFSET) & mask;
-            do_prefetch(self.items.as_ptr().wrapping_add(offset));
+            let offset = (Self::MULTIPLIER * i) & mask;
+            do_prefetch(prefetch_ptr.wrapping_add(offset));
 
-            // safe because i < self.items.len()
-            let value = unsafe { self.items.get_unchecked(i) }.borrow();
+            // SAFETY: i < self.items.len(), so in-bounds
+            // SAFETY: 1 <= i, so not [0], so initialized
+            let value = unsafe { self.items.get_unchecked(i).assume_init_ref() }.borrow();
             // using branchless index update. At the moment compiler cannot reliably tranform
             // if expressions to branchless instructions like `cmov` and `setb`
-            i = 2 * i + 1 + usize::from(x > value);
+            i = 2 * i + usize::from(x > value);
         }
 
-        // we want ffs(~(i + 1))
-        // since ctz(x) = ffs(x) - 1
-        // we use ctz(~(i + 1)) + 1
-        let j = (i + 1) >> ((!(i + 1)).trailing_zeros() + 1);
-        if j == 0 {
-            None
-        } else {
-            Some(unsafe { self.items.get_unchecked(j - 1) })
-        }
+        // Because the branchless loop navigates the tree until we reach a leaf node regardless of whether
+        // the value is found or not, we now need to decode the found value index, if any.
+        //
+        // To understand how this works, it is useful to think of the index as a binary number.
+        // The index update strategy always multiplies the index by 2 (which can be seen as `i <<= 1`)
+        // and then adds 1 (which can be seen as `i |= 1`) if the value is greater than the current node value.
+        // So, we can interpret the bits in index as a history of turns we made in the tree: a 0 bit means
+        // we went left, a 1 bit means we went right.
+        //
+        // Another important observation is that when we find the target value, we make a left turn
+        // and the corresponding bit in the index will be 0. More importantly, all subsequent bits
+        // will be 1, because after we made a left turn we ended up in a subtree where all values
+        // are less than the target value.
+        //
+        // Therefore, to decode the index we need to:
+        //   1. get rid of all trailing 1 bits (dummy turns we made after we found the target value)
+        //   2. get rid of one more bit to restore the index state before we made a left turn at the target element
+        //   3. check if the resulting index is greater than 0 (0 means the target value is not in the tree)
+        i >>= i.trailing_ones() + 1;
+        // SAFETY: i < self.items.len(), so in-bounds
+        // SAFETY: 1 <= i, so not [0], so initialized
+        (i > 0).then(|| unsafe { self.items.get_unchecked(i).assume_init_ref() })
+    }
+}
+
+impl<T> Drop for OrderedCollection<T> {
+    fn drop(&mut self) {
+        // SAFETY: all elements beyond [0] are initialized, so can be dropped (which .truncate(1) will do)
+        // at the end of drop(), items will hold a single `MaybeUninit<T>` (`[0]`), which is uninitialized.
+        // when the `Vec` is dropped, it will then drop `[0]`, but that's fine since dropping an uninitialized
+        // `MaybeUninit<T>` doesn't call `T::drop` and is sound.
+        let items: &mut Vec<T> = unsafe { mem::transmute(&mut self.items) };
+        items.truncate(1);
     }
 }
 
@@ -370,16 +419,19 @@ fn do_prefetch<T>(addr: *const T) {
 #[cfg(not(feature = "nightly"))]
 fn do_prefetch<T>(_addr: *const T) {}
 
-/// Calculates prefetch mask for a given collection size.
+/// Calculates the prefetch mask for a given collection size.
 ///
-/// Creates binary mask that fully covers given [`usize`] value (eg. for the value `0b100` the mask is `0b111`).
-/// Prefetch mask is used to keep an element address inside an array boundaries when prefetching next values from the
-/// memory. Although, it is totally valid to prefetch invalid addresses from x86 point of view[^1],
-/// on some CPUs it can lead to performance degradation[^2].
+/// Creates a binary mask that fully covers a given [`usize`] value (e.g., for the value `0b100`, the mask is `0b111`).
+/// The prefetch mask is used to keep an element address inside the array boundaries when prefetching next values from
+/// memory.
+///
+/// It is totally valid to prefetch invalid addresses from an x86 perspective[^1], but such prefetches do not
+/// aid algorithm performance and may worsen it by thrashing the CPU cache. Instead of prefetching outside
+/// the array boundaries, we use a prefetch mask to zero the offset and prefetch the first elements of the array
+/// instead, aiding subsequent searches. Essentially, masking the offset is a cheaper alternative to the
+/// `offset % size` function.
 ///
 /// [^1]: [Intel® 64 and IA-32 Architectures Software Developer’s Manual](https://software.intel.com/en-us/download/intel-64-and-ia-32-architectures-sdm-combined-volumes-1-2a-2b-2c-2d-3a-3b-3c-3d-and-4)
-///
-/// [^2]: [Array Layouts for Comparison-Based Searching. Section 5.3](https://arxiv.org/pdf/1509.05053.pdf)
 fn prefetch_mask(n: usize) -> usize {
     if n > 0 {
         usize::max_value() >> n.leading_zeros()
@@ -391,7 +443,7 @@ fn prefetch_mask(n: usize) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use alloc::vec;
+    use alloc::{boxed::Box, vec};
 
     #[test]
     fn complete_exact() {
@@ -473,5 +525,17 @@ mod tests {
         assert_eq!(prefetch_mask(3), 0b011);
         assert_eq!(prefetch_mask(4), 0b111);
         assert_eq!(prefetch_mask(usize::max_value()), usize::max_value());
+    }
+
+    /// Because we're using non standard Eytzinger layout with uninitialized first element, we need to ensure that
+    /// the `OrderedCollection` is safe to drop for non primitive types with custom drop logic. This test is supposed
+    /// to be run with `miri`.
+    #[test]
+    fn check_drop_safety() {
+        drop(OrderedCollection::from(vec![
+            Box::new(1),
+            Box::new(2),
+            Box::new(3),
+        ]));
     }
 }
