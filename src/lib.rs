@@ -302,7 +302,8 @@ impl<T: Ord> OrderedCollection<T> {
         eytzinger_walk(&mut context, 1);
         let (mut items, _) = context;
 
-        // here we assume all `n` elements from the iterator was inserted in items
+        // SAFETY: all `n` elements from the iterator was inserted in items.
+        // [0] is uninitialized, but that's okay since the value type is `MaybeUninit`.
         unsafe { items.set_len(n + 1) };
 
         OrderedCollection { items }
@@ -363,7 +364,8 @@ impl<T: Ord> OrderedCollection<T> {
             let offset = (Self::MULTIPLIER * i) & mask;
             do_prefetch(prefetch_ptr.wrapping_add(offset));
 
-            // safe because 1 <= i < self.items.len()
+            // SAFETY: i < self.items.len(), so in-bounds
+            // SAFETY: 1 <= i, so not [0], so initialized
             let value = unsafe { self.items.get_unchecked(i).assume_init_ref() }.borrow();
             // using branchless index update. At the moment compiler cannot reliably tranform
             // if expressions to branchless instructions like `cmov` and `setb`
@@ -389,13 +391,18 @@ impl<T: Ord> OrderedCollection<T> {
         //   2. get rid of one more bit to restore the index state before we made a left turn at the target element
         //   3. check if the resulting index is greater than 0 (0 means the target value is not in the tree)
         i >>= i.trailing_ones() + 1;
+        // SAFETY: i < self.items.len(), so in-bounds
+        // SAFETY: 1 <= i, so not [0], so initialized
         (i > 0).then(|| unsafe { self.items.get_unchecked(i).assume_init_ref() })
     }
 }
 
 impl<T> Drop for OrderedCollection<T> {
     fn drop(&mut self) {
-        // we need to drop all elements except the 0th one, which is uninitialized
+        // SAFETY: all elements beyond [0] are initialized, so can be dropped (which .truncate(1) will do)
+        // at the end of drop(), items will hold a single `MaybeUninit<T>` (`[0]`), which is uninitialized.
+        // when the `Vec` is dropped, it will then drop `[0]`, but that's fine since dropping an uninitialized
+        // `MaybeUninit<T>` doesn't call `T::drop` and is sound.
         let items: &mut Vec<T> = unsafe { mem::transmute(&mut self.items) };
         items.truncate(1);
     }
