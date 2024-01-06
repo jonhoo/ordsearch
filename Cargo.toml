@@ -1,6 +1,6 @@
 [package]
 name = "ordsearch"
-version = "0.2.5"
+version = "0.2.6"
 
 description = "A data structure for efficient lower-bound lookups"
 readme = "README.md"
