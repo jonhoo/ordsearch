@@ -458,9 +458,9 @@ impl<'a, T> Iterator for Iter<'a, T> {
     fn next(&mut self) -> Option<Self::Item> {
         self.idx += 1;
         if self.idx < self.coll.items.len() {
+            let value = &self.coll.items[self.idx];
             // SAFETY: i > 0, so only initialized items are accessed
             // SAFETY: i < self.coll.items.len() so no out-of-bounds access
-            let value = &self.coll.items[self.idx];
             Some(unsafe { value.assume_init_ref() })
         } else {
             None
