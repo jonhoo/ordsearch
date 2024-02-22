@@ -410,9 +410,8 @@ impl<T: Ord> OrderedCollection<T> {
     /// values.sort();
     /// assert_eq!(values, expected);
     /// ```
-    pub fn iter<'a>(&'a self) -> impl Iterator<Item = &'a T> {
-        // We start from 1 because [0] is unitialized
-        Iter { coll: self, idx: 1 }
+    pub fn iter(&self) -> impl Iterator<Item = &T> {
+        Iter { coll: self, idx: 0 }
     }
 }
 
@@ -425,15 +424,26 @@ impl<T: Clone> OrderedCollection<T> {
     /// # use ordsearch::OrderedCollection;
     /// let x = vec![1, 2, 3, 4, 5];
     /// let coll = OrderedCollection::from(x.clone());
-    /// let mut values: Vec<_> = coll.to_vec();
+    /// let mut values: Vec<_> = coll.into_vec();
     /// values.sort();
     /// assert_eq!(values, x);
     /// ```
-    pub fn to_vec(&self) -> Vec<T> {
+    pub fn into_vec(mut self) -> Vec<T> {
         assert!(!self.items.is_empty());
-        // SAFETY: accessing only elements past [0], so all initialized
-        let items: &[T] = unsafe { mem::transmute(&self.items[1..]) };
-        items.to_vec()
+
+        let mut items = mem::take(&mut self.items);
+        items.swap_remove(0);
+        // SAFETY: 0-th element already removed, so all initialized
+        unsafe { mem::transmute(items) }
+    }
+}
+
+impl<T: Clone> IntoIterator for OrderedCollection<T> {
+    type Item = T;
+    type IntoIter = alloc::vec::IntoIter<T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.into_vec().into_iter()
     }
 }
 
@@ -446,12 +456,12 @@ impl<'a, T> Iterator for Iter<'a, T> {
     type Item = &'a T;
 
     fn next(&mut self) -> Option<Self::Item> {
+        self.idx += 1;
         if self.idx < self.coll.items.len() {
             // SAFETY: i > 0, so only initialized items are accessed
             // SAFETY: i < self.coll.items.len() so no out-of-bounds access
-            let value = unsafe { self.coll.items[self.idx].assume_init_ref() };
-            self.idx += 1;
-            Some(value)
+            let value = &self.coll.items[self.idx];
+            Some(unsafe { value.assume_init_ref() })
         } else {
             None
         }
@@ -460,7 +470,7 @@ impl<'a, T> Iterator for Iter<'a, T> {
 
 impl<T: Clone> From<OrderedCollection<T>> for Vec<T> {
     fn from(value: OrderedCollection<T>) -> Self {
-        value.to_vec()
+        value.into_vec()
     }
 }
 
@@ -582,6 +592,18 @@ mod tests {
             assert_eq!(x.find_gte(i), Some(&256));
         }
         assert_eq!(x.find_gte(257), None);
+    }
+
+    #[test]
+    fn check_into_iter() {
+        let expected = vec![1, 2, 4, 8, 16, 32, 64, 128, 256];
+        let x = OrderedCollection::from_sorted_iter(expected.clone());
+        let mut values = vec![];
+        for value in x {
+            values.push(value);
+        }
+        values.sort();
+        assert_eq!(values, expected);
     }
 
     #[test]
