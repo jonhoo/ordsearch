@@ -395,6 +395,73 @@ impl<T: Ord> OrderedCollection<T> {
         // SAFETY: 1 <= i, so not [0], so initialized
         (i > 0).then(|| unsafe { self.items.get_unchecked(i).assume_init_ref() })
     }
+
+    /// Iterator over elements of a collection.
+    ///
+    /// It yields all items in an unspecified order.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use ordsearch::OrderedCollection;
+    /// let expected = vec![1, 2, 3, 4, 5];
+    /// let coll = OrderedCollection::from(expected.clone());
+    /// let mut values: Vec<_> = coll.iter().copied().collect();
+    /// values.sort();
+    /// assert_eq!(values, expected);
+    /// ```
+    pub fn iter<'a>(&'a self) -> impl Iterator<Item = &'a T> {
+        // We start from 1 because [0] is unitialized
+        Iter { coll: self, idx: 1 }
+    }
+}
+
+impl<T: Clone> OrderedCollection<T> {
+    /// Copies all elemenets into a new [`Vec`] in unspecified order
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use ordsearch::OrderedCollection;
+    /// let x = vec![1, 2, 3, 4, 5];
+    /// let coll = OrderedCollection::from(x.clone());
+    /// let mut values: Vec<_> = coll.to_vec();
+    /// values.sort();
+    /// assert_eq!(values, x);
+    /// ```
+    pub fn to_vec(&self) -> Vec<T> {
+        assert!(!self.items.is_empty());
+        // SAFETY: accessing only elements past [0], so all initialized
+        let items: &[T] = unsafe { mem::transmute(&self.items[1..]) };
+        items.to_vec()
+    }
+}
+
+struct Iter<'a, T> {
+    coll: &'a OrderedCollection<T>,
+    idx: usize,
+}
+
+impl<'a, T> Iterator for Iter<'a, T> {
+    type Item = &'a T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.idx < self.coll.items.len() {
+            // SAFETY: i > 0, so only initialized items are accessed
+            // SAFETY: i < self.coll.items.len() so no out-of-bounds access
+            let value = unsafe { self.coll.items[self.idx].assume_init_ref() };
+            self.idx += 1;
+            Some(value)
+        } else {
+            None
+        }
+    }
+}
+
+impl<T: Clone> From<OrderedCollection<T>> for Vec<T> {
+    fn from(value: OrderedCollection<T>) -> Self {
+        value.to_vec()
+    }
 }
 
 impl<T> Drop for OrderedCollection<T> {
