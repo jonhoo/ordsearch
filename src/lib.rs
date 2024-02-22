@@ -597,11 +597,9 @@ mod tests {
     #[test]
     fn check_into_iter() {
         let expected = vec![1, 2, 4, 8, 16, 32, 64, 128, 256];
-        let x = OrderedCollection::from_sorted_iter(expected.clone());
-        let mut values = vec![];
-        for value in x {
-            values.push(value);
-        }
+        let mut values = OrderedCollection::from_sorted_iter(expected.clone())
+            .into_iter()
+            .collect::<Vec<_>>();
         values.sort();
         assert_eq!(values, expected);
     }
