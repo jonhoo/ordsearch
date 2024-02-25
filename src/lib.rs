@@ -415,29 +415,6 @@ impl<T: Ord> OrderedCollection<T> {
     }
 }
 
-impl<T> OrderedCollection<T> {
-    /// Copies all elemenets into a new [`Vec`] in unspecified order
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use ordsearch::OrderedCollection;
-    /// let x = vec![1, 2, 3, 4, 5];
-    /// let coll = OrderedCollection::from(x.clone());
-    /// let mut values: Vec<_> = coll.into_vec();
-    /// values.sort();
-    /// assert_eq!(values, x);
-    /// ```
-    pub fn into_vec(mut self) -> Vec<T> {
-        assert!(!self.items.is_empty());
-
-        let mut items = mem::take(&mut self.items);
-        items.swap_remove(0);
-        // SAFETY: 0-th element already removed, so all initialized
-        unsafe { mem::transmute(items) }
-    }
-}
-
 impl<'a, T: Ord> IntoIterator for &'a OrderedCollection<T> {
     type Item = &'a T;
     type IntoIter = Iter<'a, T>;
@@ -452,7 +429,7 @@ impl<T> IntoIterator for OrderedCollection<T> {
     type IntoIter = alloc::vec::IntoIter<T>;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.into_vec().into_iter()
+        Vec::from(self).into_iter()
     }
 }
 
@@ -481,8 +458,25 @@ impl<'a, T> Iterator for Iter<'a, T> {
 }
 
 impl<T> From<OrderedCollection<T>> for Vec<T> {
-    fn from(value: OrderedCollection<T>) -> Self {
-        value.into_vec()
+    /// Converts all elemenets into a new [`Vec`] in unspecified order
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use ordsearch::OrderedCollection;
+    /// let x = vec![1, 2, 3, 4, 5];
+    /// let coll = OrderedCollection::from(x.clone());
+    /// let mut values = Vec::from(coll);
+    /// values.sort();
+    /// assert_eq!(values, x);
+    /// ```
+    fn from(mut value: OrderedCollection<T>) -> Self {
+        assert!(!value.items.is_empty());
+
+        let mut items = mem::take(&mut value.items);
+        items.swap_remove(0);
+        // SAFETY: 0-th element already removed, so all initialized
+        unsafe { mem::transmute(items) }
     }
 }
 
