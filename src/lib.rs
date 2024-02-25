@@ -611,6 +611,29 @@ mod tests {
     }
 
     #[test]
+    fn check_into_iter_empty() {
+        let values = OrderedCollection::<u32>::from(vec![]);
+        assert!(Vec::from(values).is_empty());
+    }
+
+    #[test]
+    fn check_iter() {
+        let expected = vec![1, 2, 4, 8, 16, 32, 64, 128, 256];
+        let mut values = OrderedCollection::from_sorted_iter(expected.clone())
+            .iter()
+            .copied()
+            .collect::<Vec<_>>();
+        values.sort();
+        assert_eq!(values, expected);
+    }
+
+    #[test]
+    fn check_iter_empty() {
+        let values = OrderedCollection::<u32>::from(vec![]);
+        assert!(values.iter().next().is_none());
+    }
+
+    #[test]
     fn check_mask() {
         assert_eq!(prefetch_mask(0), 0b000);
         assert_eq!(prefetch_mask(1), 0b001);
