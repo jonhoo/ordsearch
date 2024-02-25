@@ -395,6 +395,89 @@ impl<T: Ord> OrderedCollection<T> {
         // SAFETY: 1 <= i, so not [0], so initialized
         (i > 0).then(|| unsafe { self.items.get_unchecked(i).assume_init_ref() })
     }
+
+    /// Iterator over elements of a collection.
+    ///
+    /// It yields all items in an unspecified order.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use ordsearch::OrderedCollection;
+    /// let expected = vec![1, 2, 3, 4, 5];
+    /// let coll = OrderedCollection::from(expected.clone());
+    /// let mut values: Vec<_> = coll.iter().copied().collect();
+    /// values.sort();
+    /// assert_eq!(values, expected);
+    /// ```
+    pub fn iter(&self) -> Iter<'_, T> {
+        Iter { coll: self, idx: 0 }
+    }
+}
+
+impl<'a, T: Ord> IntoIterator for &'a OrderedCollection<T> {
+    type Item = &'a T;
+    type IntoIter = Iter<'a, T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+impl<T> IntoIterator for OrderedCollection<T> {
+    type Item = T;
+    type IntoIter = alloc::vec::IntoIter<T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        Vec::from(self).into_iter()
+    }
+}
+
+/// Immutable iterator over elements in a [`OrderedCollection`]
+///
+/// Created by [`OrderedCollection::iter()`].
+pub struct Iter<'a, T> {
+    coll: &'a OrderedCollection<T>,
+    idx: usize,
+}
+
+impl<'a, T> Iterator for Iter<'a, T> {
+    type Item = &'a T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.idx += 1;
+        if self.idx < self.coll.items.len() {
+            let value = &self.coll.items[self.idx];
+            // SAFETY: i > 0, so only initialized items are accessed
+            // SAFETY: i < self.coll.items.len() so no out-of-bounds access
+            Some(unsafe { value.assume_init_ref() })
+        } else {
+            None
+        }
+    }
+}
+
+impl<T> From<OrderedCollection<T>> for Vec<T> {
+    /// Converts all elemenets into a new [`Vec`] in unspecified order
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use ordsearch::OrderedCollection;
+    /// let x = vec![1, 2, 3, 4, 5];
+    /// let coll = OrderedCollection::from(x.clone());
+    /// let mut values = Vec::from(coll);
+    /// values.sort();
+    /// assert_eq!(values, x);
+    /// ```
+    fn from(mut value: OrderedCollection<T>) -> Self {
+        assert!(!value.items.is_empty());
+
+        let mut items = mem::take(&mut value.items);
+        items.swap_remove(0);
+        // SAFETY: 0-th element already removed, so all initialized
+        unsafe { mem::transmute(items) }
+    }
 }
 
 impl<T> Drop for OrderedCollection<T> {
@@ -515,6 +598,39 @@ mod tests {
             assert_eq!(x.find_gte(i), Some(&256));
         }
         assert_eq!(x.find_gte(257), None);
+    }
+
+    #[test]
+    fn check_into_iter() {
+        let expected = vec![1, 2, 4, 8, 16, 32, 64, 128, 256];
+        let mut values = OrderedCollection::from_sorted_iter(expected.clone())
+            .into_iter()
+            .collect::<Vec<_>>();
+        values.sort();
+        assert_eq!(values, expected);
+    }
+
+    #[test]
+    fn check_into_iter_empty() {
+        let values = OrderedCollection::<u32>::from(vec![]);
+        assert_eq!(Vec::from(values), vec![]);
+    }
+
+    #[test]
+    fn check_iter() {
+        let expected = vec![1, 2, 4, 8, 16, 32, 64, 128, 256];
+        let mut values = OrderedCollection::from_sorted_iter(expected.clone())
+            .iter()
+            .copied()
+            .collect::<Vec<_>>();
+        values.sort();
+        assert_eq!(values, expected);
+    }
+
+    #[test]
+    fn check_iter_empty() {
+        let values = OrderedCollection::<u32>::from(vec![]);
+        assert_eq!(values.iter().next(), None);
     }
 
     #[test]
