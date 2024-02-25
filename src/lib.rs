@@ -613,7 +613,7 @@ mod tests {
     #[test]
     fn check_into_iter_empty() {
         let values = OrderedCollection::<u32>::from(vec![]);
-        assert!(Vec::from(values).is_empty());
+        assert_eq!(Vec::from(values), vec![]);
     }
 
     #[test]
@@ -630,7 +630,7 @@ mod tests {
     #[test]
     fn check_iter_empty() {
         let values = OrderedCollection::<u32>::from(vec![]);
-        assert!(values.iter().next().is_none());
+        assert_eq!(values.iter().next(), None);
     }
 
     #[test]
