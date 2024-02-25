@@ -415,7 +415,7 @@ impl<T: Ord> OrderedCollection<T> {
     }
 }
 
-impl<T: Clone> OrderedCollection<T> {
+impl<T> OrderedCollection<T> {
     /// Copies all elemenets into a new [`Vec`] in unspecified order
     ///
     /// # Examples
@@ -438,7 +438,7 @@ impl<T: Clone> OrderedCollection<T> {
     }
 }
 
-impl<T: Clone> IntoIterator for OrderedCollection<T> {
+impl<T> IntoIterator for OrderedCollection<T> {
     type Item = T;
     type IntoIter = alloc::vec::IntoIter<T>;
 
@@ -468,7 +468,7 @@ impl<'a, T> Iterator for Iter<'a, T> {
     }
 }
 
-impl<T: Clone> From<OrderedCollection<T>> for Vec<T> {
+impl<T> From<OrderedCollection<T>> for Vec<T> {
     fn from(value: OrderedCollection<T>) -> Self {
         value.into_vec()
     }
