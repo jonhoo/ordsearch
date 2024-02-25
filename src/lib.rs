@@ -410,7 +410,7 @@ impl<T: Ord> OrderedCollection<T> {
     /// values.sort();
     /// assert_eq!(values, expected);
     /// ```
-    pub fn iter(&self) -> impl Iterator<Item = &T> {
+    pub fn iter(&self) -> Iter<'_, T> {
         Iter { coll: self, idx: 0 }
     }
 }
@@ -438,6 +438,15 @@ impl<T> OrderedCollection<T> {
     }
 }
 
+impl<'a, T: Ord> IntoIterator for &'a OrderedCollection<T> {
+    type Item = &'a T;
+    type IntoIter = Iter<'a, T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
 impl<T> IntoIterator for OrderedCollection<T> {
     type Item = T;
     type IntoIter = alloc::vec::IntoIter<T>;
@@ -447,7 +456,10 @@ impl<T> IntoIterator for OrderedCollection<T> {
     }
 }
 
-struct Iter<'a, T> {
+/// Immutable iterator over elements in a [`OrderedCollection`]
+///
+/// Created by [`OrderedCollection::iter()`].
+pub struct Iter<'a, T> {
     coll: &'a OrderedCollection<T>,
     idx: usize,
 }
