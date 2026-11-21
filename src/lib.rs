@@ -109,7 +109,6 @@
 //!
 #![deny(missing_docs)]
 #![no_std]
-#![cfg_attr(feature = "nightly", feature(concat_idents))]
 #![cfg_attr(feature = "nightly", feature(core_intrinsics))]
 
 extern crate alloc;
@@ -495,7 +494,7 @@ impl<T> Drop for OrderedCollection<T> {
 #[inline(always)]
 fn do_prefetch<T>(addr: *const T) {
     unsafe {
-        core::intrinsics::prefetch_read_data(addr, 3);
+        core::intrinsics::prefetch_read_data::<T, 3>(addr);
     }
 }
 
@@ -517,7 +516,7 @@ fn do_prefetch<T>(_addr: *const T) {}
 /// [^1]: [Intel® 64 and IA-32 Architectures Software Developer’s Manual](https://software.intel.com/en-us/download/intel-64-and-ia-32-architectures-sdm-combined-volumes-1-2a-2b-2c-2d-3a-3b-3c-3d-and-4)
 fn prefetch_mask(n: usize) -> usize {
     if n > 0 {
-        usize::max_value() >> n.leading_zeros()
+        usize::MAX >> n.leading_zeros()
     } else {
         0
     }
@@ -640,7 +639,7 @@ mod tests {
         assert_eq!(prefetch_mask(2), 0b011);
         assert_eq!(prefetch_mask(3), 0b011);
         assert_eq!(prefetch_mask(4), 0b111);
-        assert_eq!(prefetch_mask(usize::max_value()), usize::max_value());
+        assert_eq!(prefetch_mask(usize::MAX), usize::MAX);
     }
 
     /// Because we're using non standard Eytzinger layout with uninitialized first element, we need to ensure that
